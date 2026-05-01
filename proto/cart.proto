@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package cart.v1;
+import "store-item.proto";
+
+// CartService defines the gRPC service for managing shopping carts.
+service CartService {
+  // rpc to get a cart by user ID
+  rpc GetCart(UserId) returns (CartResponse);
+  // rpc to add an item to the cart
+  rpc AddToCart(AddToCartRequest) returns (CartResponse);
+  // rpc to update an item in the cart
+  rpc UpdateCartItem(UpdateCartItemRequest) returns (CartResponse);
+  // rpc to remove an item from the cart
+  rpc RemoveFromCart(RemoveFromCartRequest) returns (CartResponse);
+  // rpc to clear the cart
+  rpc ClearCart(UserId) returns (StatusResponse);
+}
+
+// Message representing a user ID
+message UserId {
+  string user_id = 1;
+}
+
+// Message representing a status response
+message StatusResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Client-supplied fields only — price/currency are set server-side
+message CartItemInput {
+  string product_id = 1;
+  optional string variant_id = 2;
+  int32 quantity = 3;
+}
+
+// Server-enriched cart item stored in Redis and returned in responses
+message CartItem {
+  string product_id = 1;
+  optional string variant_id = 2;
+  int32 quantity = 3;
+  double price = 4;       // price snapshot at add time
+  store_item.v1.Currency currency = 5;
+}
+
+// Message representing a cart response
+message CartResponse {
+  string user_id = 1;
+  repeated CartItem items = 2;
+  double total = 3;
+  store_item.v1.Currency currency = 4;
+}
+
+// Request to add an item to the cart
+message AddToCartRequest {
+  string user_id = 1;
+  CartItemInput item = 2;
+}
+
+// Request to update an item in the cart
+message UpdateCartItemRequest {
+  string user_id = 1;
+  CartItemInput item = 2;
+}
+
+// Request to remove an item from the cart
+message RemoveFromCartRequest {
+  string user_id = 1;
+  string product_id = 2;
+  optional string variant_id = 3;
+}
+
+// Command to generate TypeScript code with NestJS options
+// protoc -I ./proto ./proto/cart.proto --ts_proto_out=./src/generated-types --ts_proto_opt=nestJs=true

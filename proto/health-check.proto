@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package health_check.v1;
+
+import "google/protobuf/empty.proto";
+
+// HealthCheckService defines the gRPC service for health checking.
+service HealthCheckService {
+  // rpc to check the health status of the service
+  rpc CheckAppHealth(google.protobuf.Empty) returns (HealthCheckResponse) {}
+  // rpc to check readiness of all dependencies
+  rpc CheckAppConnections(google.protobuf.Empty) returns (ReadinessResponse) {}
+}
+
+// HealthCheckResponse represents the health status response.
+message HealthCheckResponse {
+  bool serving = 1;
+  string message = 2;
+}
+
+// DependencyHealth represents the health status of a single dependency.
+message DependencyHealth {
+  string name = 1;
+  bool healthy = 2;
+  string message = 3;
+  int32 latency_ms = 4;
+}
+
+// ReadinessResponse represents the readiness status with per-dependency details.
+message ReadinessResponse {
+  bool serving = 1;
+  string message = 2;
+  repeated DependencyHealth dependencies = 3;
+}
+
+// Command to generate TypeScript code with NestJS options
+// protoc -I ./proto ./proto/health-check.proto --ts_proto_out=./src/generated-types --ts_proto_opt=nestJs=true

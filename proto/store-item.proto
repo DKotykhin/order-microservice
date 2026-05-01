@@ -1,0 +1,245 @@
+syntax = "proto3";
+
+package store_item.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// StoreItemService defines the gRPC service for managing store items.
+service StoreItemService {
+  // rpc to get store items by category ID with options for a specific language
+  rpc GetStoreItemsByCategoryIdWithOption(GetStoreItemsByCategoryIdRequest) returns (StoreItemListWithOption) {}
+  // rpc to get store items by category slug with options for a specific language
+  rpc GetStoreItemsByCategorySlugWithOption(GetStoreItemsByCategorySlugRequest) returns (StoreItemListWithOption) {}
+  // rpc to get a store item by its ID and language
+  rpc GetStoreItemById(GetStoreItemByIdRequest) returns (StoreItemWithOption) {}
+  // rpc to create a new store item
+  rpc CreateStoreItem(CreateStoreItemRequest) returns (Id) {}
+  // rpc to update an existing store item
+  rpc UpdateStoreItem(UpdateStoreItemRequest) returns (Id) {}
+  // rpc to delete a store item by its ID
+  rpc DeleteStoreItem(Id) returns (StatusResponse) {}
+  // rpc to create or update a store item translation
+  rpc UpsertStoreItemTranslation(StoreItemTranslationRequest) returns (Id) {}
+  // rpc to delete a store item translation by its ID
+  rpc DeleteStoreItemTranslation(Id) returns (StatusResponse) {}
+  // rpc to add an image to a store item
+  rpc AddStoreItemImage(AddStoreItemImageRequest) returns (Id) {}
+  // rpc to remove an image from a store item
+  rpc RemoveStoreItemImage(Id) returns (StatusResponse) {}
+  // rpc to change the position of a store item image
+  rpc ChangeStoreItemImagePosition(ChangeStoreItemImagePositionRequest) returns (Id) {}
+  // rpc to change the position of a store item
+  rpc ChangeStoreItemPosition(ChangeStoreItemPositionRequest) returns (StoreItemWithOption) {}
+  // rpc to link an existing attribute to a store item (admin flow step 6)
+  rpc AddStoreItemVariant(AddStoreItemVariantRequest) returns (Id) {}
+  // rpc to remove a variant (item_attribute link) from a store item
+  rpc RemoveStoreItemVariant(Id) returns (StatusResponse) {}
+  // rpc to create or update the translated value for a variant in a specific language (admin flow step 7)
+  rpc UpsertItemAttributeTranslation(UpsertItemAttributeTranslationRequest) returns (Id) {}
+  // rpc to add a price for a variant (admin flow step 8)
+  rpc AddVariantPrice(AddVariantPriceRequest) returns (Id) {}
+  // rpc to remove a variant price by its ID
+  rpc RemoveVariantPrice(Id) returns (StatusResponse) {}
+  // rpc to add a base price to a store item (for items without variants)
+  rpc AddStoreItemBasePrice(AddStoreItemBasePriceRequest) returns (Id) {}
+  // rpc to remove a base price from a store item
+  rpc RemoveStoreItemBasePrice(Id) returns (StatusResponse) {}
+}
+
+// PriceType enumeration for different types of prices
+enum PriceType {
+  PRICE_TYPE_UNSPECIFIED = 0;
+  PRICE_TYPE_REGULAR = 1;
+  PRICE_TYPE_DISCOUNT = 2;
+  PRICE_TYPE_WHOLESALE = 3;
+}
+
+// Language enumeration for supported languages
+enum Language {
+  LANGUAGE_UNSPECIFIED = 0;
+  LANGUAGE_EN = 1;
+  LANGUAGE_UA = 2;
+  LANGUAGE_RU = 3;
+  LANGUAGE_DE = 4;
+  LANGUAGE_ES = 5;
+  LANGUAGE_FR = 6;
+}
+
+// Currency enumeration for supported currencies
+enum Currency {
+  CURRENCY_UNSPECIFIED = 0;
+  CURRENCY_USD = 1;
+  CURRENCY_EUR = 2;
+  CURRENCY_GBP = 3;
+  CURRENCY_UAH = 4;
+}
+
+// declaration of Id message
+message Id {
+  string id = 1;
+}
+
+// declaration of GetStoreItemsByCategoryIdRequest message
+message GetStoreItemsByCategoryIdRequest {
+  string category_id = 1;
+  Language language = 2;
+}
+
+// declaration of GetStoreItemsByCategorySlugRequest message
+message GetStoreItemsByCategorySlugRequest {
+  string category_slug = 1;
+  Language language = 2;
+}
+
+// declaration of GetStoreItemByIdRequest message
+message GetStoreItemByIdRequest {
+  string item_id = 1;
+  Language language = 2;
+}
+
+// declaration of CreateStoreItemRequest message
+message CreateStoreItemRequest {
+  string category_id = 1;
+  string slug = 2;
+  optional string brand = 3;
+  optional bool is_available = 4;
+  optional google.protobuf.Timestamp expected_date = 5;
+}
+
+// declaration of UpdateStoreItemRequest message
+message UpdateStoreItemRequest {
+  string item_id = 1;
+  optional string category_id = 2;
+  optional string slug = 3;
+  optional string brand = 4;
+  optional bool is_available = 5;
+  optional google.protobuf.Timestamp expected_date = 6;
+}
+
+// declaration of StoreItemTranslationRequest message
+message StoreItemTranslationRequest {
+  string item_id = 1;
+  Language language = 2;
+  string title = 3;
+  optional string description = 4;
+  optional string detailed_description = 5;
+}
+
+// declaration of AddStoreItemImageRequest message
+message AddStoreItemImageRequest {
+  string item_id = 1;
+  string url = 2;
+  optional string alt = 3;
+  optional int32 sort_order = 4;
+}
+
+// declaration of ChangeStoreItemImagePositionRequest message
+message ChangeStoreItemImagePositionRequest {
+  string image_id = 1;
+  int32 sort_order = 2;
+}
+
+// declaration of ChangeStoreItemPositionRequest message
+message ChangeStoreItemPositionRequest {
+  string item_id = 1;
+  int32 sort_order = 2;
+}
+
+// declaration of AddStoreItemVariantRequest message
+// links an existing attribute (created via StoreAttributeService) to a store item — admin flow step 6
+message AddStoreItemVariantRequest {
+  string item_id = 1;
+  string attribute_id = 2;
+}
+
+// declaration of UpsertItemAttributeTranslationRequest message
+// sets the translated value for a variant in a specific language — admin flow step 7
+message UpsertItemAttributeTranslationRequest {
+  string item_attribute_id = 1;
+  Language language = 2;
+  string value = 3;
+}
+
+// declaration of AddVariantPriceRequest message
+// adds a price for a variant (item_attribute) — admin flow step 8
+message AddVariantPriceRequest {
+  string item_attribute_id = 1;
+  PriceType price_type = 2;
+  string value = 3;
+  optional Currency currency = 4;
+}
+
+// declaration of AddStoreItemBasePriceRequest message
+message AddStoreItemBasePriceRequest {
+  string item_id = 1;
+  PriceType price_type = 2;
+  string value = 3;
+  optional Currency currency = 4;
+}
+
+// Message representing a status response
+message StatusResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Message representing a list of store items with options
+message StoreItemListWithOption {
+  repeated StoreItemWithOption data = 1;
+}
+
+// Message representing a store item with flattened translations and variants
+message StoreItemWithOption {
+  string id = 1;
+  optional string brand = 2;
+  string slug = 3;
+  bool is_available = 4;
+  int32 sort_order = 5;
+  optional google.protobuf.Timestamp expected_date = 6;
+  string category_id = 7;
+  string title = 8;
+  optional string description = 9;
+  optional string detailed_description = 10;
+  repeated ItemImage images = 11;
+  repeated ItemVariant variants = 12;
+  repeated ItemBasePrice prices = 13;
+  repeated ItemInfoAttribute attributes = 14;
+}
+
+// Message representing an informational attribute (no price impact)
+message ItemInfoAttribute {
+  string slug = 1;
+  string name = 2;
+  string value = 3;
+}
+
+// Message representing a product variant (one per attribute value)
+message ItemVariant {
+  string id = 1;
+  string attribute_slug = 2;
+  string attribute_name = 3;
+  string attribute_value = 4;
+  optional string regular_price = 5;
+  optional string discount_price = 6;
+  optional string wholesale_price = 7;
+  optional Currency currency = 8;
+}
+
+// Message representing a base price for items without variants
+message ItemBasePrice {
+  string id = 1;
+  PriceType price_type = 2;
+  string value = 3;
+  optional Currency currency = 4;
+}
+
+// Message representing an image for a store item
+message ItemImage {
+  string id = 1;
+  string url = 2;
+  optional string alt = 3;
+  int32 sort_order = 4;
+}
+
+// Command to generate TypeScript code with NestJS options, using null for optional fields and Date for timestamps
+// protoc -I ./proto ./proto/store-item.proto --ts_proto_out=./src/generated-types --ts_proto_opt=nestJs=true --ts_proto_opt=useNullAsOptional=true --ts_proto_opt=useDate=true
