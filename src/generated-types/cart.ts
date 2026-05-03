@@ -46,6 +46,9 @@ export interface CartItem {
   /** price snapshot at add time */
   price: number;
   currency: Currency;
+  title?: string | undefined;
+  variantName?: string | undefined;
+  imageUrl?: string | undefined;
 }
 
 /** Message representing a cart response */

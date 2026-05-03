@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 
+import { CartAbandonmentModule } from 'src/cart-abandonment/cart-abandonment.module';
 import { STORE_ITEM_SERVICE_NAME, STORE_ITEM_V1_PACKAGE_NAME } from 'src/generated-types/store-item';
 import { CartController } from './cart.controller';
 import { CartService } from './cart.service';
@@ -22,6 +23,7 @@ import { CartService } from './cart.service';
         inject: [ConfigService],
       },
     ]),
+    CartAbandonmentModule,
   ],
   controllers: [CartController],
   providers: [CartService],

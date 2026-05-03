@@ -1,0 +1,180 @@
+syntax = "proto3";
+
+package user.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// UserService defines the gRPC service for managing users.
+service UserService {
+  // --- user access rpc methods --- //
+  // rpc to get user by id
+  rpc GetUserById(Id) returns (User) {}
+  // rpc to update an existing user
+  rpc UpdateUser(UpdateUserRequest) returns (User) {}
+  // rpc to delete a user by id
+  rpc DeleteUser(Id) returns (StatusResponse) {}
+  // rpc to confirm user password
+  rpc ConfirmPassword(PasswordRequest) returns (StatusResponse) {}
+  // rpc to change user password
+  rpc ChangePassword(PasswordRequest) returns (StatusResponse) {}
+  // rpc to create or update user address
+  rpc UpsertDeliveryAddress(UpsertDeliveryAddressRequest) returns (DeliveryAddress) {}
+  // rpc to get user delivery addresses
+  rpc GetDeliveryAddresses(Id) returns (GetDeliveryAddressesResponse) {}
+  // rpc to delete user delivery address
+  rpc DeleteDeliveryAddress(Id) returns (StatusResponse) {}
+
+  // --- admin access rpc methods --- //
+  // rpc to get all users
+  rpc GetAllUsers(AllUsersRequest) returns (AllUsersResponse) {}
+  // rpc to ban a user by id
+  rpc BanUser(BanUserRequest) returns (User) {}
+  // rpc to unban a user by id
+  rpc UnbanUser(BanUserRequest) returns (User) {}
+  // rpc to get all banned users
+  rpc GetBannedUsers(google.protobuf.Empty) returns (GetBannedUsersResponse) {}
+  // get ban details by user id
+  rpc GetBanDetailsByUserId(Id) returns (BanDetailsResponse) {}
+  // rpc to change user role
+  rpc ChangeUserRole(UserRoleRequest) returns (User) {}
+}
+
+// declaration of User message
+message User {
+  string id = 1;
+  optional string name = 2;
+  string email = 3;
+  optional string phone_number = 4;
+  UserRole role = 5;
+  optional string avatar_url = 6;
+  optional string password_hash = 7;
+  bool is_email_verified = 8;
+  optional google.protobuf.Timestamp last_login = 9;
+  bool is_banned = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+// user roles enumeration
+enum UserRole {
+  USER = 0;
+  ADMIN = 1;
+  MODERATOR = 2;
+  VISITOR = 3;
+}
+
+// declaration of Id message
+message Id {
+  string id = 1;
+}
+// Message representing a status response
+message StatusResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Message for updating an existing user
+message UpdateUserRequest {
+  string id = 1;
+  optional string name = 2;
+  optional string phone_number = 3;
+  optional string avatar_url = 4;
+}
+
+// Message for password related requests
+message PasswordRequest {
+  string id = 1;
+  string password = 2;
+}
+
+// Message for upserting a delivery address
+message UpsertDeliveryAddressRequest {
+  oneof target {
+    string user_id = 1;
+    string address_id = 2;
+  }
+  string address_line = 3;
+  string city = 4;
+  optional string state = 5;
+  string postal_code = 6;
+  string country = 7;
+  bool is_default = 8;
+}
+
+// Message for a delivery address
+message DeliveryAddress {
+  string id = 1;
+  string user_id = 2;
+  string address_line = 3;
+  string city = 4;
+  optional string state = 5;
+  string postal_code = 6;
+  string country = 7;
+  bool is_default = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+// Message for getting delivery addresses response
+message GetDeliveryAddressesResponse {
+  repeated DeliveryAddress addresses = 1;
+}
+
+// Message for banning a user
+message BanUserRequest {
+  string id = 1;
+  string banned_by = 2;
+  optional string reason = 3;
+  optional google.protobuf.Timestamp ban_until = 4;
+}
+
+// Message for ban details
+message BanDetails {
+  string id = 1;
+  string user_id = 2;
+  bool is_banned = 3;
+  string banned_by = 4;
+  optional string ban_reason = 5;
+  optional google.protobuf.Timestamp ban_until = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+// Message for ban details response
+message BanDetailsResponse {
+  repeated BanDetails ban_details = 1;
+}
+
+// Message for getting banned users response
+message GetBannedUsersResponse {
+  repeated User users = 1;
+}
+
+// Message for changing user role
+message UserRoleRequest {
+  string id = 1;
+  UserRole role = 2;
+}
+
+// Messages for paginated user retrieval
+message AllUsersRequest {
+  int32 page = 1;
+  int32 limit = 2;
+}
+
+// Message for paginated user response
+message AllUsersResponse {
+  repeated User users = 1;
+  PaginationMeta meta = 2;
+}
+
+// Message for pagination metadata
+message PaginationMeta {
+  int32 page = 1;
+  int32 limit = 2;
+  int32 total_items = 3;
+  int32 total_pages = 4;
+}
+
+// Command to generate TypeScript code with NestJS options, using null for optional fields and Date for timestamps
+// protoc -I ./proto ./proto/user.proto --ts_proto_out=./src/generated-types --ts_proto_opt=nestJs=true --ts_proto_opt=useNullAsOptional=true --ts_proto_opt=useDate=true

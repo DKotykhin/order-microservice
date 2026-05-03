@@ -1,5 +1,6 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 import { validateEnv } from './utils/validators/env-validator';
 import { EnvironmentVariables } from './utils/env.dto';
@@ -13,6 +14,16 @@ import { CartModule } from './cart/cart.module';
       isGlobal: true,
       envFilePath: ['.env.local'],
       validate: (config) => validateEnv(config, EnvironmentVariables),
+    }),
+    BullModule.forRootAsync({
+      useFactory: (configService: ConfigService) => ({
+        connection: {
+          host: configService.getOrThrow<string>('REDIS_HOST'),
+          port: configService.getOrThrow<number>('REDIS_PORT'),
+          db: configService.getOrThrow<number>('REDIS_DB'),
+        },
+      }),
+      inject: [ConfigService],
     }),
     RedisModule,
     MessageBrokerModule,
