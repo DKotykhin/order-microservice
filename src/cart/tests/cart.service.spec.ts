@@ -1,4 +1,4 @@
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 
 import { Currency, type CartItem, type CartItemInput } from 'src/generated-types/cart';
 import { PriceType, type StoreItemWithOption } from 'src/generated-types/store-item';
@@ -22,6 +22,11 @@ const mockStoreItemClient = {
 
 const mockGrpcClient = {
   getService: jest.fn(),
+};
+
+const mockCartAbandonmentService = {
+  scheduleReminders: jest.fn().mockResolvedValue(undefined),
+  cancelReminders: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockStoreItem: StoreItemWithOption = {
@@ -55,6 +60,9 @@ const mockStoredItem: CartItem = {
   variantId: undefined,
   price: 10.0,
   currency: Currency.CURRENCY_USD,
+  title: 'Product 1',
+  variantName: undefined,
+  imageUrl: undefined,
 };
 
 describe('CartService', () => {
@@ -64,7 +72,11 @@ describe('CartService', () => {
     jest.clearAllMocks();
     mockStoreItemClient.getStoreItemById.mockReturnValue(of(mockStoreItem));
     mockGrpcClient.getService.mockReturnValue(mockStoreItemClient);
-    service = new CartService(mockRedisService as unknown as RedisService, mockGrpcClient as never);
+    service = new CartService(
+      mockRedisService as unknown as RedisService,
+      mockCartAbandonmentService as never,
+      mockGrpcClient as never,
+    );
     service.onModuleInit();
   });
 
@@ -81,6 +93,7 @@ describe('CartService', () => {
       mockRedisService.hgetall.mockResolvedValue({
         'product-1': JSON.stringify(mockStoredItem),
       });
+      mockRedisService.expire.mockResolvedValue(1);
 
       const result = await service.getCart(userId);
 
@@ -88,6 +101,25 @@ describe('CartService', () => {
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(20.0); // 10.0 * 2
       expect(result.currency).toBe(Currency.CURRENCY_USD);
+    });
+
+    it('should extend TTL when cart has items', async () => {
+      mockRedisService.hgetall.mockResolvedValue({
+        'product-1': JSON.stringify(mockStoredItem),
+      });
+      mockRedisService.expire.mockResolvedValue(1);
+
+      await service.getCart(userId);
+
+      expect(mockRedisService.expire).toHaveBeenCalledWith(cartKey, CART_TTL_SECONDS);
+    });
+
+    it('should not extend TTL when cart is empty', async () => {
+      mockRedisService.hgetall.mockResolvedValue({});
+
+      await service.getCart(userId);
+
+      expect(mockRedisService.expire).not.toHaveBeenCalled();
     });
 
     it('should throw AppError when Redis fails', async () => {
@@ -98,7 +130,7 @@ describe('CartService', () => {
   });
 
   describe('addItem', () => {
-    it('should store new item with server-fetched price', async () => {
+    it('should store new item with server-fetched price and display fields', async () => {
       mockRedisService.hget.mockResolvedValue(null);
       mockRedisService.hset.mockResolvedValue(1);
       mockRedisService.expire.mockResolvedValue(1);
@@ -157,6 +189,17 @@ describe('CartService', () => {
       expect(mockRedisService.expire).toHaveBeenCalledWith(cartKey, CART_TTL_SECONDS);
     });
 
+    it('should schedule abandonment reminders after adding item', async () => {
+      mockRedisService.hget.mockResolvedValue(null);
+      mockRedisService.hset.mockResolvedValue(1);
+      mockRedisService.expire.mockResolvedValue(1);
+      mockRedisService.hgetall.mockResolvedValue({});
+
+      await service.addItem(userId, mockInputItem);
+
+      expect(mockCartAbandonmentService.scheduleReminders).toHaveBeenCalledWith(userId);
+    });
+
     it('should throw badRequest when productId is empty', async () => {
       await expect(service.addItem(userId, { ...mockInputItem, productId: '' })).rejects.toBeInstanceOf(AppError);
     });
@@ -173,14 +216,16 @@ describe('CartService', () => {
 
     it('should throw notFound when store service returns gRPC NOT_FOUND', async () => {
       const grpcError = Object.assign(new Error('not found'), { code: 5 });
-      mockStoreItemClient.getStoreItemById.mockReturnValue(new (require('rxjs').throwError)(() => grpcError));
+      mockStoreItemClient.getStoreItemById.mockReturnValue(throwError(() => grpcError));
 
       await expect(service.addItem(userId, mockInputItem)).rejects.toBeInstanceOf(AppError);
     });
 
     it('should throw notFound when store service returns gRPC INTERNAL null-serialization error', async () => {
-      const grpcError = Object.assign(new Error('Error serializing response: Cannot read properties of null'), { code: 13 });
-      mockStoreItemClient.getStoreItemById.mockReturnValue(new (require('rxjs').throwError)(() => grpcError));
+      const grpcError = Object.assign(new Error('Error serializing response: Cannot read properties of null'), {
+        code: 13,
+      });
+      mockStoreItemClient.getStoreItemById.mockReturnValue(throwError(() => grpcError));
 
       await expect(service.addItem(userId, mockInputItem)).rejects.toBeInstanceOf(AppError);
     });
@@ -237,6 +282,28 @@ describe('CartService', () => {
       expect(mockRedisService.hset).not.toHaveBeenCalled();
     });
 
+    it('should cancel reminders when cart becomes empty after update', async () => {
+      mockRedisService.hget.mockResolvedValue(JSON.stringify(mockStoredItem));
+      mockRedisService.hdel.mockResolvedValue(1);
+      mockRedisService.expire.mockResolvedValue(1);
+      mockRedisService.hgetall.mockResolvedValue({});
+
+      await service.updateItem(userId, { ...mockInputItem, quantity: 0 });
+
+      expect(mockCartAbandonmentService.cancelReminders).toHaveBeenCalledWith(userId);
+    });
+
+    it('should reschedule reminders when cart still has items after update', async () => {
+      mockRedisService.hget.mockResolvedValue(JSON.stringify(mockStoredItem));
+      mockRedisService.hset.mockResolvedValue(1);
+      mockRedisService.expire.mockResolvedValue(1);
+      mockRedisService.hgetall.mockResolvedValue({ 'product-1': JSON.stringify(mockStoredItem) });
+
+      await service.updateItem(userId, { ...mockInputItem, quantity: 5 });
+
+      expect(mockCartAbandonmentService.scheduleReminders).toHaveBeenCalledWith(userId);
+    });
+
     it('should re-throw AppError without wrapping it', async () => {
       mockRedisService.hget.mockResolvedValue(null);
 
@@ -267,6 +334,28 @@ describe('CartService', () => {
       expect(mockRedisService.hdel).toHaveBeenCalledWith(cartKey, 'product-1:variant-1');
     });
 
+    it('should cancel reminders when cart becomes empty after removal', async () => {
+      mockRedisService.hdel.mockResolvedValue(1);
+      mockRedisService.expire.mockResolvedValue(1);
+      mockRedisService.hgetall.mockResolvedValue({});
+
+      await service.removeItem(userId, 'product-1');
+
+      expect(mockCartAbandonmentService.cancelReminders).toHaveBeenCalledWith(userId);
+    });
+
+    it('should reschedule reminders when cart still has items after removal', async () => {
+      mockRedisService.hdel.mockResolvedValue(1);
+      mockRedisService.expire.mockResolvedValue(1);
+      mockRedisService.hgetall.mockResolvedValue({
+        'product-2': JSON.stringify({ ...mockStoredItem, productId: 'product-2' }),
+      });
+
+      await service.removeItem(userId, 'product-1');
+
+      expect(mockCartAbandonmentService.scheduleReminders).toHaveBeenCalledWith(userId);
+    });
+
     it('should be idempotent when item does not exist', async () => {
       mockRedisService.hdel.mockResolvedValue(0);
       mockRedisService.expire.mockResolvedValue(1);
@@ -283,6 +372,14 @@ describe('CartService', () => {
       await service.clearCart(userId);
 
       expect(mockRedisService.del).toHaveBeenCalledWith(cartKey);
+    });
+
+    it('should cancel abandonment reminders on clear', async () => {
+      mockRedisService.del.mockResolvedValue(1);
+
+      await service.clearCart(userId);
+
+      expect(mockCartAbandonmentService.cancelReminders).toHaveBeenCalledWith(userId);
     });
 
     it('should return success response', async () => {

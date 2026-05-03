@@ -127,7 +127,7 @@ protoc -I ./proto ./proto/cart.proto \
 
 ## Cart Data Model
 
-Cart items are stored as a Redis hash at key `cart:{userId}`. Each field is `{productId}` or `{productId}:{variantId}`, and each value is a JSON-serialised `CartItem`:
+Cart items are stored as a Redis hash at key `cart:{userId}`. Each field is `{productId}` or `{productId}:{variantId}`, and each value is a JSON-serialized `CartItem`:
 
 ```json
 {
