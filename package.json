@@ -17,7 +17,8 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "seed": "NODE_OPTIONS=--no-deprecation ts-node --project tsconfig.seed.json src/database/seed.ts"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.3",
@@ -36,6 +37,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "ioredis": "^5.10.1",
+    "pg": "^8.20.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },

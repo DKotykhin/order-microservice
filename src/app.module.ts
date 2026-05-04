@@ -7,6 +7,9 @@ import { EnvironmentVariables } from './utils/env.dto';
 import { RedisModule } from './redis/redis.module';
 import { MessageBrokerModule } from './message-broker/message-broker.module';
 import { CartModule } from './cart/cart.module';
+import { OrderModule } from './order/order.module';
+import { DatabaseModule } from './database/database.module';
+import { OrderItemModule } from './order-item/order-item.module';
 
 @Module({
   imports: [
@@ -25,9 +28,12 @@ import { CartModule } from './cart/cart.module';
       }),
       inject: [ConfigService],
     }),
+    DatabaseModule,
     RedisModule,
     MessageBrokerModule,
     CartModule,
+    OrderModule,
+    OrderItemModule,
   ],
   controllers: [],
   providers: [],
