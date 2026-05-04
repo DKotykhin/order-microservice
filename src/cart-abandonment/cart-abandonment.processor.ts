@@ -56,15 +56,20 @@ export class CartAbandonmentProcessor extends WorkerHost implements OnModuleInit
 
     const items = Object.values(cartData).map((v) => JSON.parse(v) as CartItem);
     const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    const ttlSeconds = await this.redisService.ttl(CART_KEY(userId));
+    const days = ttlSeconds > 0 ? Math.ceil(ttlSeconds / (60 * 60 * 24)) : 0;
+    const cartExpiresInDays = `${days} ${days === 1 ? 'day' : 'days'}`;
+
     this.logger.debug(
-      `Cart for user ${userEmail}: ${items.length} items, total $${total.toFixed(2)}, items: ${JSON.stringify(items)}`,
+      `Cart for user ${userEmail}: ${items.length} items, total $${total.toFixed(2)}, expires in ${cartExpiresInDays}`,
     );
 
     this.messageBrokerService.emitMessage('notification.email.send', {
       to: userEmail,
       subject: REMINDER_SUBJECTS[reminderIndex] ?? REMINDER_SUBJECTS[0],
       template: 'abandoned-cart',
-      context: { items, total: total.toFixed(2) },
+      context: { items, total: total.toFixed(2), cartExpiresInDays },
     });
 
     this.logger.log(`Sent abandonment reminder ${reminderIndex} to user ${userId}`);

@@ -9,8 +9,9 @@ export const CART_ABANDONMENT_QUEUE = 'cart-abandonment';
 const REMINDER_DELAYS_MS = [
   10 * 1000, // 10 seconds (for testing)
   1 * 60 * 60 * 1000, // 1 hour
-  24 * 60 * 60 * 1000, // 24 hours
-  72 * 60 * 60 * 1000, // 72 hours
+  24 * 60 * 60 * 1000, // 24 hours (1 day)
+  72 * 60 * 60 * 1000, // 72 hours (3 days)
+  144 * 60 * 60 * 1000, // 144 hours (6 days)
 ];
 
 @Injectable()
@@ -29,6 +30,14 @@ export class CartAbandonmentService {
         removeOnFail: true,
       });
     }
+  }
+
+  async triggerImmediateReminder(userId: string, reminderIndex = 0): Promise<void> {
+    const data: CartAbandonmentJobData = { userId, reminderIndex };
+    await this.queue.add('send-reminder', data, {
+      removeOnComplete: true,
+      removeOnFail: true,
+    });
   }
 
   async cancelReminders(userId: string): Promise<void> {
