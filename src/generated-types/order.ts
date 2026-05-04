@@ -89,6 +89,7 @@ export interface CreateOrderRequest {
   userId: string;
   items: OrderItemInput[];
   notes?: string | undefined;
+  idempotencyKey?: string | undefined;
 }
 
 export interface GetOrdersByUserRequest {

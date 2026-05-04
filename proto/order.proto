@@ -92,6 +92,7 @@ message CreateOrderRequest {
   string user_id = 1;
   repeated OrderItemInput items = 2;
   optional string notes = 3;
+  optional string idempotency_key = 4;
 }
 
 message GetOrdersByUserRequest {

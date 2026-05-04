@@ -18,7 +18,12 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "seed": "NODE_OPTIONS=--no-deprecation ts-node --project tsconfig.seed.json src/database/seed.ts"
+    "seed": "NODE_OPTIONS=--no-deprecation ts-node --project tsconfig.seed.json src/database/seed.ts",
+    "typeorm": "NODE_OPTIONS=--no-deprecation typeorm-ts-node-commonjs",
+    "migration:generate": "npm run typeorm -- -d src/database/data-source.ts migration:generate src/database/migrations/Migration",
+    "migration:run": "npm run typeorm -- -d src/database/data-source.ts migration:run",
+    "migration:revert": "npm run typeorm -- -d src/database/data-source.ts migration:revert",
+    "migration:show": "npm run typeorm -- -d src/database/data-source.ts migration:show"
   },
   "dependencies": {
     "@grpc/grpc-js": "^1.14.3",

@@ -9,6 +9,7 @@ import { MessageBrokerModule } from './message-broker/message-broker.module';
 import { CartModule } from './cart/cart.module';
 import { OrderModule } from './order/order.module';
 import { DatabaseModule } from './database/database.module';
+import { HealthCheckModule } from './health-check/health-check.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { DatabaseModule } from './database/database.module';
     DatabaseModule,
     RedisModule,
     MessageBrokerModule,
+    HealthCheckModule,
     CartModule,
     OrderModule,
   ],

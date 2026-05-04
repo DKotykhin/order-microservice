@@ -25,6 +25,7 @@ Handles shopping cart management and order persistence for the CoffeeDoor platfo
 - **Order persistence** — converts a cart snapshot into a durable `Order` + `OrderItem` records in PostgreSQL
 - **Order lifecycle** — full status progression from `pending` through `delivered` or `cancelled`/`refunded`
 - **Immutable item snapshots** — `title`, `variantName`, `imageUrl`, and `unitPrice` are copied at checkout time; store changes do not affect order history
+- **Idempotent order creation** — optional `idempotency_key` on `CreateOrder` prevents duplicate orders on client retries; results cached in Redis for 24 hours
 
 ---
 
@@ -87,11 +88,20 @@ The caller (typically the API gateway) is responsible for fetching the cart, pas
 
 | RPC | Request | Response | Notes |
 |---|---|---|---|
-| `CreateOrder` | `CreateOrderRequest` | `OrderResponse` | Converts cart items to a persistent order |
+| `CreateOrder` | `CreateOrderRequest` | `OrderResponse` | Converts cart items to a persistent order; pass optional `idempotency_key` to prevent duplicates on retry |
 | `GetOrder` | `OrderId` | `OrderResponse` | Returns order with all items |
 | `GetOrdersByUser` | `GetOrdersByUserRequest` | `OrderListResponse` | Paginated, sorted newest-first |
 | `UpdateOrderStatus` | `UpdateOrderStatusRequest` | `OrderResponse` | Admin / internal use |
 | `CancelOrder` | `CancelOrderRequest` | `OrderResponse` | Only `pending` orders; validates ownership |
+
+### HealthCheckService (`proto/health-check.proto`)
+
+| RPC | Request | Response | Notes |
+|---|---|---|---|
+| `CheckAppHealth` | `Empty` | `HealthCheckResponse` | Lightweight liveness probe — always returns `serving: true` if the process is running |
+| `CheckAppConnections` | `Empty` | `ReadinessResponse` | Readiness probe — checks PostgreSQL, Redis, and RabbitMQ connectivity with a 3 s timeout per dependency |
+
+`ReadinessResponse` includes a `dependencies` array with per-service `name`, `healthy`, `message`, and `latencyMs` fields so the caller can identify exactly which dependency is down.
 
 ---
 
@@ -183,12 +193,33 @@ npm install
 
 ## Database
 
-```bash
-# create the database (first time only)
-psql -U postgres -c "CREATE DATABASE order_db;"
+The schema is managed via TypeORM migrations. `synchronize` is disabled — all schema changes must go through migration files.
 
-# seed mock data
+```bash
+# create the database (first time only — Postgres runs in Docker)
+docker exec postgres-database psql -U postgres -c "CREATE DATABASE order_db;"
+
+# apply all pending migrations
+npm run migration:run
+
+# seed mock data (optional)
 npm run seed
+```
+
+### Migration commands
+
+```bash
+# generate a migration from entity changes
+npm run migration:generate
+
+# apply pending migrations
+npm run migration:run
+
+# revert the last applied migration
+npm run migration:revert
+
+# list applied / pending migrations
+npm run migration:show
 ```
 
 ## Running

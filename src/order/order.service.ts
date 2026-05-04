@@ -9,19 +9,35 @@ import {
   type OrderResponse,
   type UpdateOrderStatusRequest,
 } from '../generated-types/order';
+import { RedisService } from '../redis/redis.service';
 import { AppError } from '../utils/errors/app-error';
 import { mapOrder, GRPC_CURRENCY_TO_DB, GRPC_PRICE_TYPE_TO_DB, GRPC_STATUS_TO_DB } from './order.mappers';
 import { OrderRepository } from './order.repository';
+
+const IDEMPOTENCY_TTL_SECONDS = 86400; // 24 hours
 
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
 
-  constructor(private readonly orderRepository: OrderRepository) {}
+  constructor(
+    private readonly orderRepository: OrderRepository,
+    private readonly redisService: RedisService,
+  ) {}
 
   async createOrder(request: CreateOrderRequest): Promise<OrderResponse> {
     try {
       if (!request.items.length) throw AppError.badRequest('Order must contain at least one item');
+
+      if (request.idempotencyKey) {
+        const cached = await this.redisService.get(`idempotency:order:${request.idempotencyKey}`);
+        if (cached) {
+          const { userId, response } = JSON.parse(cached) as { userId: string; response: OrderResponse };
+          if (userId !== request.userId) throw AppError.forbidden('Idempotency key does not belong to this user');
+          this.logger.log(`Idempotent response for key ${request.idempotencyKey}, orderId: ${response.id}`);
+          return response;
+        }
+      }
 
       const totalPrice = request.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
       const currency = GRPC_CURRENCY_TO_DB[request.items[0].currency] ?? Currencies.UAH;
@@ -47,7 +63,18 @@ export class OrderService {
         })),
       );
 
-      return mapOrder(order);
+      const response = mapOrder(order);
+
+      if (request.idempotencyKey) {
+        await this.redisService.set(
+          `idempotency:order:${request.idempotencyKey}`,
+          JSON.stringify({ userId: request.userId, response }),
+          'EX',
+          IDEMPOTENCY_TTL_SECONDS,
+        );
+      }
+
+      return response;
     } catch (error) {
       if (error instanceof AppError) throw error;
       this.logger.error(`Failed to create order for user ${request.userId}`, error);
