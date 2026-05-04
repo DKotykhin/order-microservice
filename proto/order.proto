@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package order.v1;
+
+// OrderService defines the gRPC service for managing orders.
+service OrderService {
+  // Create a new order from cart items
+  rpc CreateOrder(CreateOrderRequest) returns (OrderResponse);
+  // Get a single order by ID
+  rpc GetOrder(OrderId) returns (OrderResponse);
+  // Get paginated order history for a user
+  rpc GetOrdersByUser(GetOrdersByUserRequest) returns (OrderListResponse);
+  // Update order status (admin/internal)
+  rpc UpdateOrderStatus(UpdateOrderStatusRequest) returns (OrderResponse);
+  // Cancel a pending order
+  rpc CancelOrder(CancelOrderRequest) returns (OrderResponse);
+}
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_PENDING = 1;
+  ORDER_STATUS_CONFIRMED = 2;
+  ORDER_STATUS_PROCESSING = 3;
+  ORDER_STATUS_SHIPPED = 4;
+  ORDER_STATUS_DELIVERED = 5;
+  ORDER_STATUS_CANCELLED = 6;
+  ORDER_STATUS_REFUNDED = 7;
+}
+
+enum Currency {
+  CURRENCY_UNSPECIFIED = 0;
+  CURRENCY_USD = 1;
+  CURRENCY_EUR = 2;
+  CURRENCY_GBP = 3;
+  CURRENCY_UAH = 4;
+}
+
+enum PriceType {
+  PRICE_TYPE_UNSPECIFIED = 0;
+  PRICE_TYPE_REGULAR = 1;
+  PRICE_TYPE_DISCOUNT = 2;
+  PRICE_TYPE_WHOLESALE = 3;
+}
+
+message OrderId {
+  string id = 1;
+}
+
+message OrderItemInput {
+  string product_id = 1;
+  optional string variant_id = 2;
+  string title = 3;
+  optional string variant_name = 4;
+  optional string image_url = 5;
+  int32 quantity = 6;
+  double unit_price = 7;
+  Currency currency = 8;
+  PriceType price_type = 9;
+}
+
+message OrderItemResponse {
+  string id = 1;
+  string product_id = 2;
+  optional string variant_id = 3;
+  string title = 4;
+  optional string variant_name = 5;
+  optional string image_url = 6;
+  int32 quantity = 7;
+  double unit_price = 8;
+  Currency currency = 9;
+  PriceType price_type = 10;
+}
+
+message OrderResponse {
+  string id = 1;
+  string user_id = 2;
+  OrderStatus status = 3;
+  Currency currency = 4;
+  double total_price = 5;
+  optional string notes = 6;
+  repeated OrderItemResponse items = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+message OrderListResponse {
+  repeated OrderResponse orders = 1;
+  int32 total = 2;
+}
+
+message CreateOrderRequest {
+  string user_id = 1;
+  repeated OrderItemInput items = 2;
+  optional string notes = 3;
+}
+
+message GetOrdersByUserRequest {
+  string user_id = 1;
+  int32 page = 2;
+  int32 limit = 3;
+}
+
+message UpdateOrderStatusRequest {
+  string id = 1;
+  OrderStatus status = 2;
+}
+
+message CancelOrderRequest {
+  string id = 1;
+  string user_id = 2;
+}
+
+// Command to generate TypeScript code with NestJS options:
+// protoc -I ./proto ./proto/order.proto --ts_proto_out=./src/generated-types --ts_proto_opt=nestJs=true

@@ -6,6 +6,7 @@ import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { GrpcExceptionFilter } from './utils/filters/grpc-exception.filter';
 import { CART_V1_PACKAGE_NAME } from './generated-types/cart';
 import { HEALTH_CHECK_V1_PACKAGE_NAME } from './generated-types/health-check';
+import { ORDER_V1_PACKAGE_NAME } from './generated-types/order';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -24,8 +25,8 @@ async function bootstrap() {
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.GRPC,
     options: {
-      package: [HEALTH_CHECK_V1_PACKAGE_NAME, CART_V1_PACKAGE_NAME],
-      protoPath: ['proto/health-check.proto', 'proto/cart.proto'],
+      package: [HEALTH_CHECK_V1_PACKAGE_NAME, CART_V1_PACKAGE_NAME, ORDER_V1_PACKAGE_NAME],
+      protoPath: ['proto/health-check.proto', 'proto/cart.proto', 'proto/order.proto'],
       url,
     },
   });

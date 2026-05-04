@@ -9,7 +9,6 @@ import { MessageBrokerModule } from './message-broker/message-broker.module';
 import { CartModule } from './cart/cart.module';
 import { OrderModule } from './order/order.module';
 import { DatabaseModule } from './database/database.module';
-import { OrderItemModule } from './order-item/order-item.module';
 
 @Module({
   imports: [
@@ -33,7 +32,6 @@ import { OrderItemModule } from './order-item/order-item.module';
     MessageBrokerModule,
     CartModule,
     OrderModule,
-    OrderItemModule,
   ],
   controllers: [],
   providers: [],
