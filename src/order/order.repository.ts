@@ -26,10 +26,7 @@ export class OrderRepository {
     });
   }
 
-  async createWithItems(
-    orderData: Partial<Order>,
-    itemsData: Partial<OrderItem>[],
-  ): Promise<Order> {
+  async createWithItems(orderData: Partial<Order>, itemsData: Partial<OrderItem>[]): Promise<Order> {
     const order = await this.orderRepo.save(this.orderRepo.create(orderData));
     order.items = await this.orderItemRepo.save(
       itemsData.map((item) => this.orderItemRepo.create({ ...item, order: { id: order.id } })),

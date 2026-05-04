@@ -1,11 +1,5 @@
 import { Currencies, OrderStatus as DbOrderStatus, PriceType as DbPriceType } from '../database/db.enums';
-import {
-  Currency,
-  OrderStatus,
-  PriceType,
-  type OrderItemResponse,
-  type OrderResponse,
-} from '../generated-types/order';
+import { Currency, OrderStatus, PriceType, type OrderItemResponse, type OrderResponse } from '../generated-types/order';
 import { OrderItem } from '../order-item/entities/order-item.entity';
 import { Order } from './entities/order.entity';
 

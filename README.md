@@ -3,6 +3,7 @@
 ![NestJS](https://img.shields.io/badge/NestJS-E0234E?style=flat&logo=nestjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat&logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)
 ![BullMQ](https://img.shields.io/badge/BullMQ-FF4444?style=flat)
 ![RabbitMQ](https://img.shields.io/badge/RabbitMQ-FF6600?style=flat&logo=rabbitmq&logoColor=white)
@@ -10,7 +11,7 @@
 ![ESLint](https://img.shields.io/badge/ESLint-4B32C3?style=flat&logo=eslint&logoColor=white)
 ![Prettier](https://img.shields.io/badge/Prettier-F7B93E?style=flat&logo=prettier&logoColor=black)
 
-Handles shopping cart management for the CoffeeDoor platform. Exposes a gRPC API, stores cart state in Redis, and integrates with the store-item, user, and notification microservices.
+Handles shopping cart management and order persistence for the CoffeeDoor platform. Exposes a gRPC API, stores cart state in Redis, persists orders in PostgreSQL, and integrates with the store-item, user, and notification microservices.
 
 ---
 
@@ -21,6 +22,9 @@ Handles shopping cart management for the CoffeeDoor platform. Exposes a gRPC API
 - **Enriched cart items** — `title`, `variantName`, and `imageUrl` are stored alongside price so responses and emails are human-readable without extra lookups
 - **Abandoned cart reminders** — BullMQ schedules delayed email jobs (1 h / 24 h / 72 h) after any cart mutation; jobs are cancelled when the cart is cleared or an order is placed
 - **Sliding TTL** — the 7-day Redis TTL resets on every read and write, keeping active carts alive
+- **Order persistence** — converts a cart snapshot into a durable `Order` + `OrderItem` records in PostgreSQL
+- **Order lifecycle** — full status progression from `pending` through `delivered` or `cancelled`/`refunded`
+- **Immutable item snapshots** — `title`, `variantName`, `imageUrl`, and `unitPrice` are copied at checkout time; store changes do not affect order history
 
 ---
 
@@ -29,17 +33,114 @@ Handles shopping cart management for the CoffeeDoor platform. Exposes a gRPC API
 ```
 Client (gRPC)
     │
-    ▼
-CartController (gRPC)
+    ├─▶ CartController
+    │       └── CartService
+    │               ├── Redis                — cart state (hash per user, 7-day TTL)
+    │               ├── StoreItemService (gRPC) — price/availability/display sync
+    │               └── CartAbandonmentService
+    │                       ├── BullMQ       — delayed job scheduling
+    │                       └── UserService (gRPC) + MessageBrokerService (RabbitMQ)
     │
-    ▼
-CartService
-    ├── Redis           — cart state storage (hash per user, 7-day TTL)
-    ├── StoreItemService (gRPC) — price/availability/display field sync
-    └── CartAbandonmentService
-            ├── BullMQ  — delayed job scheduling (uses same Redis)
-            └── UserService (gRPC) + MessageBrokerService (RabbitMQ)
-                        — resolves user email, emits notification.email.send
+    └─▶ OrderController
+            └── OrderService
+                    └── OrderRepository
+                            └── PostgreSQL   — orders + order_item tables
+```
+
+---
+
+## Order Flow
+
+```
+Cart (Redis)  ──checkout──▶  CreateOrder (gRPC)
+                                  │
+                                  ▼
+                         Order (status: pending)
+                         OrderItem[] (price snapshot)
+                                  │
+                         UpdateOrderStatus (admin)
+                                  │
+                     ┌────────────┴────────────┐
+                  confirmed                cancelled
+                  processing               refunded
+                  shipped
+                  delivered
+```
+
+The caller (typically the API gateway) is responsible for fetching the cart, passing its items to `CreateOrder`, and clearing the cart afterwards.
+
+---
+
+## gRPC Services
+
+### CartService (`proto/cart.proto`)
+
+| RPC | Request | Response |
+|---|---|---|
+| `GetCart` | `UserId` | `CartResponse` |
+| `AddToCart` | `AddToCartRequest` | `CartResponse` |
+| `UpdateCartItem` | `UpdateCartItemRequest` | `CartResponse` |
+| `RemoveFromCart` | `RemoveFromCartRequest` | `CartResponse` |
+| `ClearCart` | `UserId` | `StatusResponse` |
+
+### OrderService (`proto/order.proto`)
+
+| RPC | Request | Response | Notes |
+|---|---|---|---|
+| `CreateOrder` | `CreateOrderRequest` | `OrderResponse` | Converts cart items to a persistent order |
+| `GetOrder` | `OrderId` | `OrderResponse` | Returns order with all items |
+| `GetOrdersByUser` | `GetOrdersByUserRequest` | `OrderListResponse` | Paginated, sorted newest-first |
+| `UpdateOrderStatus` | `UpdateOrderStatusRequest` | `OrderResponse` | Admin / internal use |
+| `CancelOrder` | `CancelOrderRequest` | `OrderResponse` | Only `pending` orders; validates ownership |
+
+---
+
+## Data Model
+
+### Order (PostgreSQL)
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID | Primary key |
+| `userId` | varchar | Reference to user service |
+| `status` | enum | `pending` → `confirmed` → `processing` → `shipped` → `delivered` / `cancelled` / `refunded` |
+| `currency` | enum | `USD`, `EUR`, `GBP`, `UAH` |
+| `totalPrice` | decimal(10,2) | Sum of `unitPrice × quantity` for all items |
+| `notes` | text | Optional delivery instructions |
+| `createdAt` | timestamp | |
+| `updatedAt` | timestamp | |
+
+### OrderItem (PostgreSQL)
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID | Primary key |
+| `orderId` | UUID FK | Cascade delete |
+| `productId` | varchar | Snapshot — store-microservice item slug/id |
+| `variantId` | varchar | Snapshot — optional attribute variant id |
+| `title` | varchar | Snapshot at checkout time |
+| `variantName` | varchar | Snapshot at checkout time |
+| `imageUrl` | varchar | Snapshot at checkout time |
+| `quantity` | int | |
+| `unitPrice` | decimal(10,2) | Price at time of purchase |
+| `currency` | enum | Per-item currency |
+| `priceType` | enum | `regular`, `discount`, `wholesale` |
+
+### Cart item (Redis)
+
+Cart items are stored as a Redis hash at key `cart:{userId}`. Each field is `{productId}` or `{productId}:{variantId}`, and each value is a JSON-serialized `CartItem`:
+
+```json
+{
+  "productId": "uuid",
+  "variantId": "uuid (optional)",
+  "quantity": 2,
+  "price": 350,
+  "currency": 4,
+  "title": "Honduras Copan",
+  "variantName": "Grind: Whole Bean",
+  "imageUrl": "/images/honduras-1.jpg"
+}
 ```
 
 ---
@@ -61,6 +162,7 @@ CartService
 | `NODE_ENV` | Runtime environment (`development` / `production`) |
 | `TRANSPORT_URL` | gRPC bind address (e.g. `0.0.0.0:5005`) |
 | `HTTP_PORT` | HTTP port for health/metrics (e.g. `9105`) |
+| `DATABASE_URL` | PostgreSQL connection URL for order persistence |
 | `REDIS_HOST` | Redis hostname |
 | `REDIS_PORT` | Redis port |
 | `REDIS_DB` | Redis database index (0–15) |
@@ -68,7 +170,6 @@ CartService
 | `RABBITMQ_QUEUE` | RabbitMQ queue name for outgoing notifications |
 | `STORE_SERVICE_URL` | gRPC address of the store-item microservice |
 | `USER_SERVICE_URL` | gRPC address of the user microservice |
-| `DATABASE_URL` | Postgres URL (reserved for order persistence, not yet used) |
 
 Copy `.env.example` to `.env.local` and fill in values before running locally.
 
@@ -78,6 +179,16 @@ Copy `.env.example` to `.env.local` and fill in values before running locally.
 
 ```bash
 npm install
+```
+
+## Database
+
+```bash
+# create the database (first time only)
+psql -U postgres -c "CREATE DATABASE order_db;"
+
+# seed mock data
+npm run seed
 ```
 
 ## Running
@@ -115,31 +226,13 @@ Proto files live in `proto/`. TypeScript types are pre-generated in `src/generat
 To regenerate after a proto change:
 
 ```bash
-# example for cart.proto
 protoc -I ./proto ./proto/cart.proto \
   --ts_proto_out=./src/generated-types \
-  --ts_proto_opt=nestJs=true \
-  --ts_proto_opt=useNullAsOptional=true \
-  --ts_proto_opt=useDate=true
-```
+  --ts_proto_opt=nestJs=true
 
----
-
-## Cart Data Model
-
-Cart items are stored as a Redis hash at key `cart:{userId}`. Each field is `{productId}` or `{productId}:{variantId}`, and each value is a JSON-serialized `CartItem`:
-
-```json
-{
-  "productId": "uuid",
-  "variantId": "uuid (optional)",
-  "quantity": 2,
-  "price": 350,
-  "currency": 4,
-  "title": "Honduras Copan",
-  "variantName": "Grind: Whole Bean",
-  "imageUrl": "/images/honduras-1.jpg"
-}
+protoc -I ./proto ./proto/order.proto \
+  --ts_proto_out=./src/generated-types \
+  --ts_proto_opt=nestJs=true
 ```
 
 ---
