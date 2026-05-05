@@ -11,7 +11,7 @@
 ![ESLint](https://img.shields.io/badge/ESLint-4B32C3?style=flat&logo=eslint&logoColor=white)
 ![Prettier](https://img.shields.io/badge/Prettier-F7B93E?style=flat&logo=prettier&logoColor=black)
 
-Handles shopping cart management and order persistence for the CoffeeDoor platform. Exposes a gRPC API, stores cart state in Redis, persists orders in PostgreSQL, and integrates with the store-item, user, and notification microservices.
+Handles shopping cart management and order persistence for the CoffeeDoor platform. Exposes a gRPC API, stores cart state in Redis, persists orders in PostgreSQL, and integrates with the store-item and notification microservices.
 
 ---
 
@@ -40,7 +40,7 @@ Client (gRPC)
     │               ├── StoreItemService (gRPC) — price/availability/display sync
     │               └── CartAbandonmentService
     │                       ├── BullMQ       — delayed job scheduling
-    │                       └── UserService (gRPC) + MessageBrokerService (RabbitMQ)
+    │                       └── MessageBrokerService (RabbitMQ)
     │
     └─▶ OrderController
             └── OrderService
@@ -160,8 +160,7 @@ Cart items are stored as a Redis hash at key `cart:{userId}`. Each field is `{pr
 | Dependency | Transport | Purpose |
 |---|---|---|
 | `store-item-microservice` | gRPC | Validate item availability, fetch price and display fields |
-| `user-microservice` | gRPC | Resolve user email for abandonment emails |
-| `notification-microservice` | RabbitMQ (`notification.email.send`) | Send abandoned cart emails |
+| `notification-microservice` | RabbitMQ (`notification.email.send`) | Send order confirmation and abandoned cart emails |
 
 ---
 
@@ -179,7 +178,6 @@ Cart items are stored as a Redis hash at key `cart:{userId}`. Each field is `{pr
 | `RABBITMQ_URL` | RabbitMQ AMQP connection URL |
 | `RABBITMQ_QUEUE` | RabbitMQ queue name for outgoing notifications |
 | `STORE_SERVICE_URL` | gRPC address of the store-item microservice |
-| `USER_SERVICE_URL` | gRPC address of the user microservice |
 
 Copy `.env.example` to `.env.local` and fill in values before running locally.
 

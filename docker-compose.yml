@@ -1,0 +1,15 @@
+services:
+  order-app:
+    container_name: order-app
+    image: order-microservice:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - ./.env.docker
+    networks:
+      - coffeedoor-network
+
+networks:
+  coffeedoor-network:
+      external: true

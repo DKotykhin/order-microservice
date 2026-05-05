@@ -1,5 +1,6 @@
 export interface EmailRequest {
-  to: string;
+  userId?: string;
+  to?: string;
   subject: string;
   html?: string;
   template?: string;

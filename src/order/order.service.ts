@@ -9,6 +9,7 @@ import {
   type OrderResponse,
   type UpdateOrderStatusRequest,
 } from '../generated-types/order';
+import { MessageBrokerService } from '../message-broker/message-broker.service';
 import { RedisService } from '../redis/redis.service';
 import { AppError } from '../utils/errors/app-error';
 import { mapOrder, GRPC_CURRENCY_TO_DB, GRPC_PRICE_TYPE_TO_DB, GRPC_STATUS_TO_DB } from './order.mappers';
@@ -23,11 +24,13 @@ export class OrderService {
   constructor(
     private readonly orderRepository: OrderRepository,
     private readonly redisService: RedisService,
+    private readonly messageBrokerService: MessageBrokerService,
   ) {}
 
   async createOrder(request: CreateOrderRequest): Promise<OrderResponse> {
     try {
       if (!request.items.length) throw AppError.badRequest('Order must contain at least one item');
+      this.logger.debug(`Idempotency key for this request: ${request.idempotencyKey}`);
 
       if (request.idempotencyKey) {
         const cached = await this.redisService.get(`idempotency:order:${request.idempotencyKey}`);
@@ -73,6 +76,8 @@ export class OrderService {
           IDEMPOTENCY_TTL_SECONDS,
         );
       }
+
+      this.sendOrderConfirmationEmail(request.userId, response);
 
       return response;
     } catch (error) {
@@ -140,5 +145,15 @@ export class OrderService {
       this.logger.error(`Failed to cancel order ${request.id}`, error);
       throw AppError.internalServerError('Failed to cancel order');
     }
+  }
+
+  private sendOrderConfirmationEmail(userId: string, order: OrderResponse): void {
+    const total = order.totalPrice.toFixed(2);
+    this.messageBrokerService.emitMessage('notification.email.send', {
+      userId,
+      subject: `Order confirmed — #${order.id.slice(0, 8).toUpperCase()}`,
+      template: 'order-confirmation',
+      context: { orderId: order.id, items: order.items, total, currency: order.currency, createdAt: order.createdAt },
+    });
   }
 }

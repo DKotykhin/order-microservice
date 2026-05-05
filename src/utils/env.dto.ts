@@ -46,8 +46,4 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   readonly STORE_SERVICE_URL: string;
-
-  @IsString()
-  @IsNotEmpty()
-  readonly USER_SERVICE_URL: string;
 }

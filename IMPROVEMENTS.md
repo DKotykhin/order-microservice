@@ -5,6 +5,7 @@
 - [x] Replace `synchronize: true` with TypeORM migrations
 - [x] Idempotency on order creation
 - [x] Health check implementation
+- [x] Order confirmation email
 
 ---
 
@@ -18,9 +19,6 @@
 
 - [ ] **Refund/Return flow**
   `REFUNDED` status exists in `OrderStatus` enum but there is no `RefundOrder` RPC method or business logic behind it. Add the endpoint with validation (only `DELIVERED` orders can be refunded) and trigger a notification.
-
-- [ ] **Order confirmation email**
-  Cart abandonment emails are implemented but no email is sent when an order is actually created. Emit a `notification.email.send` event to RabbitMQ inside `OrderService.createOrder()` using the existing message broker pattern.
 
 ---
 
