@@ -24,6 +24,7 @@ Handles shopping cart management and order persistence for the CoffeeDoor platfo
 - **Sliding TTL** — the 7-day Redis TTL resets on every read and write, keeping active carts alive
 - **Order persistence** — converts a cart snapshot into a durable `Order` + `OrderItem` records in PostgreSQL
 - **Order lifecycle** — full status progression from `pending` through `delivered` or `cancelled`/`refunded`
+- **Price drift protection** — at checkout, every item's price is re-fetched from the store service and the server price is used for the final order; any discrepancy between the client-supplied price and the server price is logged as a warning
 - **Immutable item snapshots** — `title`, `variantName`, `imageUrl`, and `unitPrice` are copied at checkout time; store changes do not affect order history
 - **Idempotent order creation** — optional `idempotency_key` on `CreateOrder` prevents duplicate orders on client retries; results cached in Redis for 24 hours
 
@@ -44,6 +45,8 @@ Client (gRPC)
     │
     └─▶ OrderController
             └── OrderService
+                    ├── StoreItemService (gRPC) — price re-validation at checkout
+                    ├── CartService             — cart cleared automatically after order is created
                     └── OrderRepository
                             └── PostgreSQL   — orders + order_item tables
 ```
@@ -68,7 +71,7 @@ Cart (Redis)  ──checkout──▶  CreateOrder (gRPC)
                   delivered
 ```
 
-The caller (typically the API gateway) is responsible for fetching the cart, passing its items to `CreateOrder`, and clearing the cart afterwards.
+The caller (typically the API gateway) is responsible for fetching the cart and passing its items to `CreateOrder`. The service handles cart clearing and price validation internally — item prices are re-fetched from the store service at checkout and the server price is always used for the persisted order.
 
 ---
 

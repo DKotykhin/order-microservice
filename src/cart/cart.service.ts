@@ -24,6 +24,7 @@ const CART_KEY = (userId: string) => `cart:${userId}`;
 const CART_ITEM_FIELD = (productId: string, variantId?: string) =>
   variantId ? `${productId}:${variantId}` : productId;
 const CART_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+const MAX_CART_ITEM_QUANTITY = 99;
 
 @Injectable()
 export class CartService implements OnModuleInit {
@@ -68,9 +69,11 @@ export class CartService implements OnModuleInit {
       const existing = await this.redisService.hget(CART_KEY(userId), field);
 
       const existingItem = existing ? (JSON.parse(existing) as CartItem) : null;
-      const itemToStore: CartItem = existingItem
-        ? { ...existingItem, quantity: existingItem.quantity + enrichedItem.quantity }
-        : enrichedItem;
+      const newQuantity = existingItem ? existingItem.quantity + enrichedItem.quantity : enrichedItem.quantity;
+      if (newQuantity > MAX_CART_ITEM_QUANTITY) {
+        throw AppError.badRequest(`Quantity cannot exceed ${MAX_CART_ITEM_QUANTITY} per item`);
+      }
+      const itemToStore: CartItem = existingItem ? { ...existingItem, quantity: newQuantity } : enrichedItem;
 
       await this.redisService.hset(CART_KEY(userId), field, JSON.stringify(itemToStore));
       await this.redisService.expire(CART_KEY(userId), CART_TTL_SECONDS);
@@ -88,6 +91,8 @@ export class CartService implements OnModuleInit {
     try {
       if (!item.productId) throw AppError.badRequest('productId is required');
       if (item.quantity < 0) throw AppError.badRequest('quantity must not be negative');
+      if (item.quantity > MAX_CART_ITEM_QUANTITY)
+        throw AppError.badRequest(`Quantity cannot exceed ${MAX_CART_ITEM_QUANTITY} per item`);
 
       const field = CART_ITEM_FIELD(item.productId, item.variantId);
       const existing = await this.redisService.hget(CART_KEY(userId), field);

@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 
-import { GrpcMetricsInterceptor } from 'src/supervision/metrics/interceptors';
 import type { ReadinessResponse } from 'src/generated-types/health-check';
 import { HealthCheckController } from '../health-check.controller';
 import { HealthCheckService } from '../health-check.service';
@@ -16,10 +15,7 @@ describe('HealthCheckController', () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [HealthCheckController],
       providers: [{ provide: HealthCheckService, useValue: healthCheckServiceMock }],
-    })
-      .overrideInterceptor(GrpcMetricsInterceptor)
-      .useValue({})
-      .compile();
+    }).compile();
 
     controller = module.get<HealthCheckController>(HealthCheckController);
 
@@ -36,7 +32,7 @@ describe('HealthCheckController', () => {
 
       expect(result).toEqual({
         serving: true,
-        message: 'User microservice is healthy',
+        message: 'Order microservice is healthy',
       });
     });
   });

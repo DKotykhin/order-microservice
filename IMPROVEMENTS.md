@@ -6,6 +6,7 @@
 - [x] Idempotency on order creation
 - [x] Health check implementation
 - [x] Order confirmation email
+- [x] Clear user cart on order creation
 - [x] Price drift protection at checkout
 
 ---
@@ -35,8 +36,3 @@
   A natural complement to the cart. Users can move items out of the cart without losing them. Can be stored as a separate Redis hash alongside the existing cart structure.
 
 ---
-
-## Lower Priority
-
-- [ ] **Cart quantity cap**
-  No maximum quantity per item is validated. Without a cap, a user can set quantity to an arbitrarily large number, causing issues with inventory reservation and display. Add a configurable `MAX_CART_ITEM_QUANTITY` guard in `CartService.addToCart` and `updateCartItem`.
