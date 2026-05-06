@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import type { ClientGrpc } from '@nestjs/microservices';
+import { firstValueFrom } from 'rxjs';
 
 import { Currencies, OrderStatus as DbOrderStatus, PriceType as DbPriceType } from '../database/db.enums';
 import {
@@ -9,6 +11,14 @@ import {
   type OrderResponse,
   type UpdateOrderStatusRequest,
 } from '../generated-types/order';
+import {
+  Language,
+  PriceType,
+  STORE_ITEM_SERVICE_NAME,
+  type StoreItemServiceClient,
+  type StoreItemWithOption,
+} from '../generated-types/store-item';
+import { CartService } from '../cart/cart.service';
 import { MessageBrokerService } from '../message-broker/message-broker.service';
 import { RedisService } from '../redis/redis.service';
 import { AppError } from '../utils/errors/app-error';
@@ -18,14 +28,21 @@ import { OrderRepository } from './order.repository';
 const IDEMPOTENCY_TTL_SECONDS = 86400; // 24 hours
 
 @Injectable()
-export class OrderService {
+export class OrderService implements OnModuleInit {
   private readonly logger = new Logger(OrderService.name);
+  private storeItemClient: StoreItemServiceClient;
 
   constructor(
     private readonly orderRepository: OrderRepository,
     private readonly redisService: RedisService,
     private readonly messageBrokerService: MessageBrokerService,
+    private readonly cartService: CartService,
+    @Inject(STORE_ITEM_SERVICE_NAME) private readonly storeItemGrpcClient: ClientGrpc,
   ) {}
+
+  onModuleInit() {
+    this.storeItemClient = this.storeItemGrpcClient.getService<StoreItemServiceClient>(STORE_ITEM_SERVICE_NAME);
+  }
 
   async createOrder(request: CreateOrderRequest): Promise<OrderResponse> {
     try {
@@ -42,8 +59,20 @@ export class OrderService {
         }
       }
 
-      const totalPrice = request.items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-      const currency = GRPC_CURRENCY_TO_DB[request.items[0].currency] ?? Currencies.UAH;
+      const serverPrices = await Promise.all(
+        request.items.map((item) => this.fetchServerPrice(item.productId, item.variantId)),
+      );
+
+      const validatedItems = request.items.map((item, i) => {
+        const serverPrice = serverPrices[i];
+        if (serverPrice !== item.unitPrice) {
+          this.logger.warn(`Price drift on item ${item.productId}: client=${item.unitPrice}, server=${serverPrice}`);
+        }
+        return { ...item, unitPrice: serverPrice };
+      });
+
+      const totalPrice = validatedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+      const currency = GRPC_CURRENCY_TO_DB[validatedItems[0].currency] ?? Currencies.UAH;
 
       const order = await this.orderRepository.createWithItems(
         {
@@ -53,7 +82,7 @@ export class OrderService {
           totalPrice,
           notes: request.notes ?? null,
         },
-        request.items.map((input) => ({
+        validatedItems.map((input) => ({
           productId: input.productId,
           variantId: input.variantId ?? null,
           title: input.title,
@@ -67,6 +96,8 @@ export class OrderService {
       );
 
       const response = mapOrder(order);
+
+      await this.cartService.clearCart(request.userId);
 
       if (request.idempotencyKey) {
         await this.redisService.set(
@@ -145,6 +176,42 @@ export class OrderService {
       this.logger.error(`Failed to cancel order ${request.id}`, error);
       throw AppError.internalServerError('Failed to cancel order');
     }
+  }
+
+  private async fetchServerPrice(productId: string, variantId?: string): Promise<number> {
+    let storeItem: StoreItemWithOption;
+    try {
+      storeItem = await firstValueFrom(
+        this.storeItemClient.getStoreItemById({ itemId: productId, language: Language.LANGUAGE_UNSPECIFIED }),
+      );
+    } catch (error) {
+      const code = (error as { code?: number }).code;
+      if (code === 5) throw AppError.preconditionFailed(`Item ${productId} is no longer available`);
+      throw AppError.internalServerError(`Failed to validate price for item ${productId}`);
+    }
+
+    if (!storeItem?.id || !storeItem.isAvailable) {
+      throw AppError.preconditionFailed(`Item ${productId} is no longer available`);
+    }
+
+    if (variantId) {
+      const variant = storeItem.variants?.find((v) => v.id === variantId);
+      if (!variant) throw AppError.preconditionFailed(`Variant ${variantId} not found for item ${productId}`);
+      const raw = variant.discountPrice ?? variant.regularPrice;
+      if (!raw) throw AppError.preconditionFailed(`No price configured for variant ${variantId}`);
+      return parseFloat(raw);
+    }
+
+    const discountPrice = storeItem.prices?.find((p) => p.priceType === PriceType.PRICE_TYPE_DISCOUNT);
+    const regularPrice = storeItem.prices?.find((p) => p.priceType === PriceType.PRICE_TYPE_REGULAR);
+    const priceObj = discountPrice ?? regularPrice;
+    if (!priceObj) {
+      if (storeItem.variants?.length) {
+        throw AppError.preconditionFailed(`Item ${productId} has only variant prices — variantId is required`);
+      }
+      throw AppError.preconditionFailed(`No price configured for item ${productId}`);
+    }
+    return parseFloat(priceObj.value);
   }
 
   private sendOrderConfirmationEmail(userId: string, order: OrderResponse): void {

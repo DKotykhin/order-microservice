@@ -6,13 +6,11 @@
 - [x] Idempotency on order creation
 - [x] Health check implementation
 - [x] Order confirmation email
+- [x] Price drift protection at checkout
 
 ---
 
 ## High Priority
-
-- [ ] **Price drift protection at checkout**
-  `CreateOrder` trusts the prices passed in the request instead of re-fetching from store-microservice. A client could send a modified price. Re-validate all item prices against the store at order creation time before persisting.
 
 - [ ] **Inventory reservation**
   Cart addition checks availability but nothing reserves stock. Two users can add the last item and both succeed at checkout. Implement reserve-on-add-to-cart with release on cart clear/TTL expiry, or at minimum reserve-on-checkout.
