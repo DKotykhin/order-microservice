@@ -28,6 +28,8 @@ Handles shopping cart, wishlist, and order persistence for the CoffeeDoor platfo
 - **Price drift protection** — at checkout, every item's price is re-fetched from the store service and the server price is used for the final order; any discrepancy between the client-supplied price and the server price is logged as a warning
 - **Immutable item snapshots** — `title`, `variantName`, `imageUrl`, and `unitPrice` are copied at checkout time; store changes do not affect order history
 - **Idempotent order creation** — optional `idempotency_key` on `CreateOrder` prevents duplicate orders on client retries; results cached in Redis for 24 hours
+- **Order search & filtering** — `GetOrdersByUser` supports filtering by status (multi-value), date range, price range, and currency, plus configurable sort by `createdAt`, `totalPrice`, or `status`
+- **Admin order listing** — `GetAllOrders` returns orders across all users with the same filter/sort/pagination interface; not scoped to a single user
 
 ---
 
@@ -110,7 +112,8 @@ The caller (typically the API gateway) is responsible for fetching the cart and 
 |---|---|---|---|
 | `CreateOrder` | `CreateOrderRequest` | `OrderResponse` | Converts cart items to a persistent order; pass optional `idempotency_key` to prevent duplicates on retry |
 | `GetOrder` | `OrderId` | `OrderResponse` | Returns order with all items |
-| `GetOrdersByUser` | `GetOrdersByUserRequest` | `OrderListResponse` | Paginated, sorted newest-first |
+| `GetOrdersByUser` | `GetOrdersByUserRequest` | `OrderListResponse` | Paginated; supports filtering by status, date range, price range, currency; configurable sort |
+| `GetAllOrders` | `GetAllOrdersRequest` | `OrderListResponse` | Same as `GetOrdersByUser` but not scoped to a user; admin/internal only |
 | `UpdateOrderStatus` | `UpdateOrderStatusRequest` | `OrderResponse` | Admin / internal use |
 | `CancelOrder` | `CancelOrderRequest` | `OrderResponse` | Only `pending` orders; validates ownership |
 
@@ -139,6 +142,27 @@ The caller (typically the API gateway) is responsible for fetching the cart and 
 | `notes` | text | Optional delivery instructions |
 | `createdAt` | timestamp | |
 | `updatedAt` | timestamp | |
+
+#### Indexes
+
+| Index | Columns / Condition | Serves |
+|---|---|---|
+| Composite | `userId`, `createdAt` | `GetOrdersByUser` — filter by user + sort by date |
+| Single-column | `createdAt` | `GetAllOrders` date range filter and default sort |
+| Partial | `status` WHERE `status IN ('pending', 'processing')` | `GetAllOrders` status filter for active orders; partial because full-column status indexes have too low selectivity to be useful |
+
+#### Filter & sort parameters (`GetOrdersByUser` / `GetAllOrders`)
+
+| Field | Type | Notes |
+|---|---|---|
+| `filters.statuses` | `OrderStatus[]` | Multi-value; `UNSPECIFIED` values are ignored |
+| `filters.dateFrom` | ISO timestamp string | Inclusive lower bound on `createdAt` |
+| `filters.dateTo` | ISO timestamp string | Inclusive upper bound on `createdAt` |
+| `filters.minPrice` | double | Inclusive lower bound on `totalPrice` |
+| `filters.maxPrice` | double | Inclusive upper bound on `totalPrice` |
+| `filters.currency` | `Currency` | Exact match; `UNSPECIFIED` is ignored |
+| `sort.field` | `createdAt` \| `totalPrice` \| `status` | Defaults to `createdAt` if absent or unrecognized |
+| `sort.order` | `SORT_ORDER_ASC` \| `SORT_ORDER_DESC` | Defaults to `DESC` |
 
 ### OrderItem (PostgreSQL)
 

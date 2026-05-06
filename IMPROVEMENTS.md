@@ -9,6 +9,7 @@
 - [x] Clear user cart on order creation
 - [x] Price drift protection at checkout
 - [x] Save for Later / Wishlist
+- [x] Order search and filtering
 
 ---
 
@@ -26,9 +27,6 @@
 
 - [ ] **Coupon / Promo code support**
   No discount code system exists. Add a coupon field to `CreateOrderRequest` and `CartResponse`. Implement validation logic (percentage vs fixed, usage limits, expiry date) — likely a new coupon-microservice or a table in this service.
-
-- [ ] **Order search and filtering**
-  `GetOrdersByUser` supports pagination only. Add filtering by status and date range, and a sort parameter. Admins also need a `GetAllOrders` endpoint that is not scoped to a single `userId`.
 
 - [ ] **Order status history / audit log**
   Status transitions happen with no record of when or by whom. Add an `order_status_history` table (`orderId`, `fromStatus`, `toStatus`, `changedBy`, `changedAt`) and write to it inside `UpdateOrderStatus` and `CancelOrder`.

@@ -4,6 +4,7 @@ import {
   OrderServiceControllerMethods,
   type CancelOrderRequest,
   type CreateOrderRequest,
+  type GetAllOrdersRequest,
   type GetOrdersByUserRequest,
   type OrderId,
   type OrderServiceController,
@@ -31,6 +32,12 @@ export class OrderController implements OrderServiceController {
   async getOrdersByUser(request: GetOrdersByUserRequest) {
     this.logger.log(`GetOrdersByUser userId: ${request.userId}, page: ${request.page}, limit: ${request.limit}`);
     return this.orderService.getOrdersByUser(request);
+  }
+
+  // TODO: enforce admin role check via gRPC metadata before this reaches the service
+  async getAllOrders(request: GetAllOrdersRequest) {
+    this.logger.log(`GetAllOrders page: ${request.page}, limit: ${request.limit}`);
+    return this.orderService.getAllOrders(request);
   }
 
   async updateOrderStatus(request: UpdateOrderStatusRequest) {

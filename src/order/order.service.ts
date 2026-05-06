@@ -6,6 +6,7 @@ import { Currencies, OrderStatus as DbOrderStatus, PriceType as DbPriceType } fr
 import {
   type CancelOrderRequest,
   type CreateOrderRequest,
+  type GetAllOrdersRequest,
   type GetOrdersByUserRequest,
   type OrderListResponse,
   type OrderResponse,
@@ -132,12 +133,23 @@ export class OrderService implements OnModuleInit {
 
   async getOrdersByUser(request: GetOrdersByUserRequest): Promise<OrderListResponse> {
     try {
-      const { userId, page = 1, limit = 10 } = request;
-      const [orders, total] = await this.orderRepository.findByUser(userId, page, limit);
+      const { userId, page = 1, limit = 10, filters, sort } = request;
+      const [orders, total] = await this.orderRepository.findByUser(userId, page, limit, filters, sort);
       return { orders: orders.map(mapOrder), total };
     } catch (error) {
       this.logger.error(`Failed to get orders for user ${request.userId}`, error);
       throw AppError.internalServerError(`Failed to get orders for user ${request.userId}`);
+    }
+  }
+
+  async getAllOrders(request: GetAllOrdersRequest): Promise<OrderListResponse> {
+    try {
+      const { page = 1, limit = 10, filters, sort } = request;
+      const [orders, total] = await this.orderRepository.findAll(page, limit, filters, sort);
+      return { orders: orders.map(mapOrder), total };
+    } catch (error) {
+      this.logger.error('Failed to get all orders', error);
+      throw AppError.internalServerError('Failed to get all orders');
     }
   }
 

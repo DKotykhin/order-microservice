@@ -10,10 +10,18 @@ service OrderService {
   rpc GetOrder(OrderId) returns (OrderResponse);
   // Get paginated order history for a user
   rpc GetOrdersByUser(GetOrdersByUserRequest) returns (OrderListResponse);
+  // Get all orders across all users (admin only)
+  rpc GetAllOrders(GetAllOrdersRequest) returns (OrderListResponse);
   // Update order status (admin/internal)
   rpc UpdateOrderStatus(UpdateOrderStatusRequest) returns (OrderResponse);
   // Cancel a pending order
   rpc CancelOrder(CancelOrderRequest) returns (OrderResponse);
+}
+
+enum SortOrder {
+  SORT_ORDER_UNSPECIFIED = 0;
+  SORT_ORDER_ASC = 1;
+  SORT_ORDER_DESC = 2;
 }
 
 enum OrderStatus {
@@ -95,10 +103,33 @@ message CreateOrderRequest {
   optional string idempotency_key = 4;
 }
 
+message OrderFilters {
+  repeated OrderStatus statuses = 1;
+  optional string date_from     = 2;
+  optional string date_to       = 3;
+  optional double min_price     = 4;
+  optional double max_price     = 5;
+  optional Currency currency    = 6;
+}
+
+message OrderSort {
+  string    field = 1;
+  SortOrder order = 2;
+}
+
 message GetOrdersByUserRequest {
-  string user_id = 1;
-  int32 page = 2;
-  int32 limit = 3;
+  string       user_id = 1;
+  int32        page    = 2;
+  int32        limit   = 3;
+  OrderFilters filters = 4;
+  OrderSort    sort    = 5;
+}
+
+message GetAllOrdersRequest {
+  int32        page    = 1;
+  int32        limit   = 2;
+  OrderFilters filters = 3;
+  OrderSort    sort    = 4;
 }
 
 message UpdateOrderStatusRequest {

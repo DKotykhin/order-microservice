@@ -10,6 +10,13 @@ import { Observable } from "rxjs";
 
 export const protobufPackage = "order.v1";
 
+export enum SortOrder {
+  SORT_ORDER_UNSPECIFIED = 0,
+  SORT_ORDER_ASC = 1,
+  SORT_ORDER_DESC = 2,
+  UNRECOGNIZED = -1,
+}
+
 export enum OrderStatus {
   ORDER_STATUS_UNSPECIFIED = 0,
   ORDER_STATUS_PENDING = 1,
@@ -92,10 +99,33 @@ export interface CreateOrderRequest {
   idempotencyKey?: string | undefined;
 }
 
+export interface OrderFilters {
+  statuses: OrderStatus[];
+  dateFrom?: string | undefined;
+  dateTo?: string | undefined;
+  minPrice?: number | undefined;
+  maxPrice?: number | undefined;
+  currency?: Currency | undefined;
+}
+
+export interface OrderSort {
+  field: string;
+  order: SortOrder;
+}
+
 export interface GetOrdersByUserRequest {
   userId: string;
   page: number;
   limit: number;
+  filters: OrderFilters | undefined;
+  sort: OrderSort | undefined;
+}
+
+export interface GetAllOrdersRequest {
+  page: number;
+  limit: number;
+  filters: OrderFilters | undefined;
+  sort: OrderSort | undefined;
 }
 
 export interface UpdateOrderStatusRequest {
@@ -113,22 +143,62 @@ export const ORDER_V1_PACKAGE_NAME = "order.v1";
 /** OrderService defines the gRPC service for managing orders. */
 
 export interface OrderServiceClient {
+  /** Create a new order from cart items */
+
   createOrder(request: CreateOrderRequest): Observable<OrderResponse>;
+
+  /** Get a single order by ID */
+
   getOrder(request: OrderId): Observable<OrderResponse>;
+
+  /** Get paginated order history for a user */
+
   getOrdersByUser(request: GetOrdersByUserRequest): Observable<OrderListResponse>;
+
+  /** Get all orders across all users (admin only) */
+
+  getAllOrders(request: GetAllOrdersRequest): Observable<OrderListResponse>;
+
+  /** Update order status (admin/internal) */
+
   updateOrderStatus(request: UpdateOrderStatusRequest): Observable<OrderResponse>;
+
+  /** Cancel a pending order */
+
   cancelOrder(request: CancelOrderRequest): Observable<OrderResponse>;
 }
 
 /** OrderService defines the gRPC service for managing orders. */
 
 export interface OrderServiceController {
+  /** Create a new order from cart items */
+
   createOrder(request: CreateOrderRequest): Promise<OrderResponse> | Observable<OrderResponse> | OrderResponse;
+
+  /** Get a single order by ID */
+
   getOrder(request: OrderId): Promise<OrderResponse> | Observable<OrderResponse> | OrderResponse;
+
+  /** Get paginated order history for a user */
+
   getOrdersByUser(
     request: GetOrdersByUserRequest,
   ): Promise<OrderListResponse> | Observable<OrderListResponse> | OrderListResponse;
-  updateOrderStatus(request: UpdateOrderStatusRequest): Promise<OrderResponse> | Observable<OrderResponse> | OrderResponse;
+
+  /** Get all orders across all users (admin only) */
+
+  getAllOrders(
+    request: GetAllOrdersRequest,
+  ): Promise<OrderListResponse> | Observable<OrderListResponse> | OrderListResponse;
+
+  /** Update order status (admin/internal) */
+
+  updateOrderStatus(
+    request: UpdateOrderStatusRequest,
+  ): Promise<OrderResponse> | Observable<OrderResponse> | OrderResponse;
+
+  /** Cancel a pending order */
+
   cancelOrder(request: CancelOrderRequest): Promise<OrderResponse> | Observable<OrderResponse> | OrderResponse;
 }
 
@@ -138,6 +208,7 @@ export function OrderServiceControllerMethods() {
       "createOrder",
       "getOrder",
       "getOrdersByUser",
+      "getAllOrders",
       "updateOrderStatus",
       "cancelOrder",
     ];

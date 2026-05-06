@@ -1,10 +1,12 @@
-import { Column, Entity, OneToMany } from 'typeorm';
+import { Column, Entity, Index, OneToMany } from 'typeorm';
 
 import { BaseEntity } from '../../database/base.entity';
 import { Currencies, OrderStatus } from '../../database/db.enums';
 import { OrderItem } from '../../order-item/entities/order-item.entity';
 
 @Entity()
+@Index(['userId', 'createdAt'])
+@Index(['createdAt'])
 export class Order extends BaseEntity {
   @Column()
   userId: string;
