@@ -7,18 +7,9 @@
 /* eslint-disable */
 import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
 import { Observable } from "rxjs";
+import { Currency } from "./store-item";
 
 export const protobufPackage = "cart.v1";
-
-/** Currency enumeration for supported currencies */
-export enum Currency {
-  CURRENCY_UNSPECIFIED = 0,
-  CURRENCY_USD = 1,
-  CURRENCY_EUR = 2,
-  CURRENCY_GBP = 3,
-  CURRENCY_UAH = 4,
-  UNRECOGNIZED = -1,
-}
 
 /** Message representing a user ID */
 export interface UserId {
@@ -144,3 +135,74 @@ export function CartServiceControllerMethods() {
 }
 
 export const CART_SERVICE_NAME = "CartService";
+
+/** WishlistService defines the gRPC service for managing user wishlists. */
+
+export interface WishlistServiceClient {
+  /** rpc to get a wishlist by user ID */
+
+  getWishlist(request: UserId): Observable<CartResponse>;
+
+  /** reusing CartResponse for wishlist since it has the same structure */
+
+  addToWishlist(request: AddToCartRequest): Observable<CartResponse>;
+
+  /** reusing RemoveFromCartRequest for wishlist since it has the same structure */
+
+  removeFromWishlist(request: RemoveFromCartRequest): Observable<CartResponse>;
+
+  /** rpc to move an item from wishlist to cart */
+
+  moveToCart(request: RemoveFromCartRequest): Observable<CartResponse>;
+
+  /** rpc to move an item from cart to wishlist */
+
+  moveToWishlist(request: RemoveFromCartRequest): Observable<CartResponse>;
+}
+
+/** WishlistService defines the gRPC service for managing user wishlists. */
+
+export interface WishlistServiceController {
+  /** rpc to get a wishlist by user ID */
+
+  getWishlist(request: UserId): Promise<CartResponse> | Observable<CartResponse> | CartResponse;
+
+  /** reusing CartResponse for wishlist since it has the same structure */
+
+  addToWishlist(request: AddToCartRequest): Promise<CartResponse> | Observable<CartResponse> | CartResponse;
+
+  /** reusing RemoveFromCartRequest for wishlist since it has the same structure */
+
+  removeFromWishlist(request: RemoveFromCartRequest): Promise<CartResponse> | Observable<CartResponse> | CartResponse;
+
+  /** rpc to move an item from wishlist to cart */
+
+  moveToCart(request: RemoveFromCartRequest): Promise<CartResponse> | Observable<CartResponse> | CartResponse;
+
+  /** rpc to move an item from cart to wishlist */
+
+  moveToWishlist(request: RemoveFromCartRequest): Promise<CartResponse> | Observable<CartResponse> | CartResponse;
+}
+
+export function WishlistServiceControllerMethods() {
+  return function (constructor: Function) {
+    const grpcMethods: string[] = [
+      "getWishlist",
+      "addToWishlist",
+      "removeFromWishlist",
+      "moveToCart",
+      "moveToWishlist",
+    ];
+    for (const method of grpcMethods) {
+      const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
+      GrpcMethod("WishlistService", method)(constructor.prototype[method], method, descriptor);
+    }
+    const grpcStreamMethods: string[] = [];
+    for (const method of grpcStreamMethods) {
+      const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);
+      GrpcStreamMethod("WishlistService", method)(constructor.prototype[method], method, descriptor);
+    }
+  };
+}
+
+export const WISHLIST_SERVICE_NAME = "WishlistService";

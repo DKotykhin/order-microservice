@@ -11,7 +11,7 @@
 ![ESLint](https://img.shields.io/badge/ESLint-4B32C3?style=flat&logo=eslint&logoColor=white)
 ![Prettier](https://img.shields.io/badge/Prettier-F7B93E?style=flat&logo=prettier&logoColor=black)
 
-Handles shopping cart management and order persistence for the CoffeeDoor platform. Exposes a gRPC API, stores cart state in Redis, persists orders in PostgreSQL, and integrates with the store-item and notification microservices.
+Handles shopping cart, wishlist, and order persistence for the CoffeeDoor platform. Exposes a gRPC API, stores cart and wishlist state in Redis, persists orders in PostgreSQL, and integrates with the store-item and notification microservices.
 
 ---
 
@@ -21,7 +21,8 @@ Handles shopping cart management and order persistence for the CoffeeDoor platfo
 - **Price & availability sync** — on every `GetCart` call, prices and availability are re-fetched from the store service and silently updated in Redis
 - **Enriched cart items** — `title`, `variantName`, and `imageUrl` are stored alongside price so responses and emails are human-readable without extra lookups
 - **Abandoned cart reminders** — BullMQ schedules delayed email jobs (1 h / 24 h / 72 h) after any cart mutation; jobs are cancelled when the cart is cleared or an order is placed
-- **Sliding TTL** — the 7-day Redis TTL resets on every read and write, keeping active carts alive
+- **Sliding TTL** — the 7-day cart TTL resets on every read and write, keeping active carts alive
+- **Wishlist / Save for Later** — users can save items to a persistent wishlist (30-day TTL); supports move-to-cart (re-validates price/availability) and move-to-wishlist (saves cart item including quantity); prices and availability are synced on every `GetWishlist` call; adding a duplicate item is idempotent
 - **Order persistence** — converts a cart snapshot into a durable `Order` + `OrderItem` records in PostgreSQL
 - **Order lifecycle** — full status progression from `pending` through `delivered` or `cancelled`/`refunded`
 - **Price drift protection** — at checkout, every item's price is re-fetched from the store service and the server price is used for the final order; any discrepancy between the client-supplied price and the server price is logged as a warning
@@ -37,18 +38,24 @@ Client (gRPC)
     │
     ├─▶ CartController
     │       └── CartService
-    │               ├── Redis                — cart state (hash per user, 7-day TTL)
+    │               ├── Redis                   — cart state (hash per user, 7-day TTL)
     │               ├── StoreItemService (gRPC) — price/availability/display sync
     │               └── CartAbandonmentService
-    │                       ├── BullMQ       — delayed job scheduling
+    │                       ├── BullMQ          — delayed job scheduling
     │                       └── MessageBrokerService (RabbitMQ)
+    │
+    ├─▶ WishlistController
+    │       └── WishlistService
+    │               ├── Redis                   — wishlist state (hash per user, 30-day TTL)
+    │               ├── StoreItemService (gRPC) — price/availability/display sync
+    │               └── CartService             — used for move-to-cart
     │
     └─▶ OrderController
             └── OrderService
                     ├── StoreItemService (gRPC) — price re-validation at checkout
                     ├── CartService             — cart cleared automatically after order is created
                     └── OrderRepository
-                            └── PostgreSQL   — orders + order_item tables
+                            └── PostgreSQL      — orders + order_item tables
 ```
 
 ---
@@ -86,6 +93,16 @@ The caller (typically the API gateway) is responsible for fetching the cart and 
 | `UpdateCartItem` | `UpdateCartItemRequest` | `CartResponse` |
 | `RemoveFromCart` | `RemoveFromCartRequest` | `CartResponse` |
 | `ClearCart` | `UserId` | `StatusResponse` |
+
+### WishlistService (`proto/cart.proto`)
+
+| RPC | Request | Response | Notes |
+|---|---|---|---|
+| `GetWishlist` | `UserId` | `CartResponse` | Syncs prices and availability before returning |
+| `AddToWishlist` | `AddToCartRequest` | `CartResponse` | Idempotent — adding an existing item is a no-op; quantity is always stored as 1 |
+| `RemoveFromWishlist` | `RemoveFromCartRequest` | `CartResponse` | |
+| `MoveToCart` | `RemoveFromCartRequest` | `CartResponse` | Removes from wishlist, calls `AddToCart` (re-validates price/availability) |
+| `MoveToWishlist` | `RemoveFromCartRequest` | `CartResponse` | Removes from cart, saves to wishlist preserving quantity |
 
 ### OrderService (`proto/order.proto`)
 
@@ -155,6 +172,12 @@ Cart items are stored as a Redis hash at key `cart:{userId}`. Each field is `{pr
   "imageUrl": "/images/honduras-1.jpg"
 }
 ```
+
+### Wishlist item (Redis)
+
+Wishlist items are stored as a Redis hash at key `wishlist:{userId}` with the same field and value structure as cart items. Quantity is always `1` for items added directly; items moved from the cart preserve their original quantity.
+
+TTL is 30 days and resets on every write. Unavailable items are removed silently on `GetWishlist`.
 
 ---
 

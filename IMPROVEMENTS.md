@@ -8,6 +8,7 @@
 - [x] Order confirmation email
 - [x] Clear user cart on order creation
 - [x] Price drift protection at checkout
+- [x] Save for Later / Wishlist
 
 ---
 
@@ -31,8 +32,5 @@
 
 - [ ] **Order status history / audit log**
   Status transitions happen with no record of when or by whom. Add an `order_status_history` table (`orderId`, `fromStatus`, `toStatus`, `changedBy`, `changedAt`) and write to it inside `UpdateOrderStatus` and `CancelOrder`.
-
-- [ ] **Save for Later / Wishlist**
-  A natural complement to the cart. Users can move items out of the cart without losing them. Can be stored as a separate Redis hash alongside the existing cart structure.
 
 ---

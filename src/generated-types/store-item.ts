@@ -6,8 +6,8 @@
 
 /* eslint-disable */
 import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
-import { wrappers } from "protobufjs";
 import { Observable } from "rxjs";
+import { Timestamp } from "./google/protobuf/timestamp";
 
 export const protobufPackage = "store_item.v1";
 
@@ -69,19 +69,19 @@ export interface GetStoreItemByIdRequest {
 export interface CreateStoreItemRequest {
   categoryId: string;
   slug: string;
-  brand?: string | null | undefined;
-  isAvailable?: boolean | null | undefined;
-  expectedDate?: Date | null | undefined;
+  brand?: string | undefined;
+  isAvailable?: boolean | undefined;
+  expectedDate?: Timestamp | undefined;
 }
 
 /** declaration of UpdateStoreItemRequest message */
 export interface UpdateStoreItemRequest {
   itemId: string;
-  categoryId?: string | null | undefined;
-  slug?: string | null | undefined;
-  brand?: string | null | undefined;
-  isAvailable?: boolean | null | undefined;
-  expectedDate?: Date | null | undefined;
+  categoryId?: string | undefined;
+  slug?: string | undefined;
+  brand?: string | undefined;
+  isAvailable?: boolean | undefined;
+  expectedDate?: Timestamp | undefined;
 }
 
 /** declaration of StoreItemTranslationRequest message */
@@ -89,16 +89,16 @@ export interface StoreItemTranslationRequest {
   itemId: string;
   language: Language;
   title: string;
-  description?: string | null | undefined;
-  detailedDescription?: string | null | undefined;
+  description?: string | undefined;
+  detailedDescription?: string | undefined;
 }
 
 /** declaration of AddStoreItemImageRequest message */
 export interface AddStoreItemImageRequest {
   itemId: string;
   url: string;
-  alt?: string | null | undefined;
-  sortOrder?: number | null | undefined;
+  alt?: string | undefined;
+  sortOrder?: number | undefined;
 }
 
 /** declaration of ChangeStoreItemImagePositionRequest message */
@@ -140,7 +140,7 @@ export interface AddVariantPriceRequest {
   itemAttributeId: string;
   priceType: PriceType;
   value: string;
-  currency?: Currency | null | undefined;
+  currency?: Currency | undefined;
 }
 
 /** declaration of AddStoreItemBasePriceRequest message */
@@ -148,7 +148,7 @@ export interface AddStoreItemBasePriceRequest {
   itemId: string;
   priceType: PriceType;
   value: string;
-  currency?: Currency | null | undefined;
+  currency?: Currency | undefined;
 }
 
 /** Message representing a status response */
@@ -165,15 +165,15 @@ export interface StoreItemListWithOption {
 /** Message representing a store item with flattened translations and variants */
 export interface StoreItemWithOption {
   id: string;
-  brand?: string | null | undefined;
+  brand?: string | undefined;
   slug: string;
   isAvailable: boolean;
   sortOrder: number;
-  expectedDate?: Date | null | undefined;
+  expectedDate?: Timestamp | undefined;
   categoryId: string;
   title: string;
-  description?: string | null | undefined;
-  detailedDescription?: string | null | undefined;
+  description?: string | undefined;
+  detailedDescription?: string | undefined;
   images: ItemImage[];
   variants: ItemVariant[];
   prices: ItemBasePrice[];
@@ -193,10 +193,10 @@ export interface ItemVariant {
   attributeSlug: string;
   attributeName: string;
   attributeValue: string;
-  regularPrice?: string | null | undefined;
-  discountPrice?: string | null | undefined;
-  wholesalePrice?: string | null | undefined;
-  currency?: Currency | null | undefined;
+  regularPrice?: string | undefined;
+  discountPrice?: string | undefined;
+  wholesalePrice?: string | undefined;
+  currency?: Currency | undefined;
 }
 
 /** Message representing a base price for items without variants */
@@ -204,27 +204,18 @@ export interface ItemBasePrice {
   id: string;
   priceType: PriceType;
   value: string;
-  currency?: Currency | null | undefined;
+  currency?: Currency | undefined;
 }
 
 /** Message representing an image for a store item */
 export interface ItemImage {
   id: string;
   url: string;
-  alt?: string | null | undefined;
+  alt?: string | undefined;
   sortOrder: number;
 }
 
 export const STORE_ITEM_V1_PACKAGE_NAME = "store_item.v1";
-
-wrappers[".google.protobuf.Timestamp"] = {
-  fromObject(value: Date) {
-    return { seconds: value.getTime() / 1000, nanos: (value.getTime() % 1000) * 1e6 };
-  },
-  toObject(message: { seconds: number; nanos: number }) {
-    return new Date(message.seconds * 1000 + message.nanos / 1e6);
-  },
-} as any;
 
 /** StoreItemService defines the gRPC service for managing store items. */
 

@@ -3,14 +3,9 @@ import type { ClientGrpc } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
 
 import { CartAbandonmentService } from 'src/cart-abandonment/cart-abandonment.service';
+import type { CartItem, CartItemInput, CartResponse, StatusResponse } from 'src/generated-types/cart';
 import {
   Currency,
-  type CartItem,
-  type CartItemInput,
-  type CartResponse,
-  type StatusResponse,
-} from 'src/generated-types/cart';
-import {
   Language,
   PriceType,
   STORE_ITEM_SERVICE_NAME,

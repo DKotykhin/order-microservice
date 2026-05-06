@@ -17,6 +17,21 @@ service CartService {
   rpc ClearCart(UserId) returns (StatusResponse);
 }
 
+// WishlistService defines the gRPC service for managing user wishlists.
+service WishlistService {
+  // rpc to get a wishlist by user ID
+  rpc GetWishlist(UserId)                    returns (CartResponse);
+  // reusing CartResponse for wishlist since it has the same structure
+  rpc AddToWishlist(AddToCartRequest)        returns (CartResponse);
+  // reusing RemoveFromCartRequest for wishlist since it has the same structure
+  rpc RemoveFromWishlist(RemoveFromCartRequest) returns (CartResponse);
+  // rpc to move an item from wishlist to cart
+  rpc MoveToCart(RemoveFromCartRequest)      returns (CartResponse);
+  // rpc to move an item from cart to wishlist
+  rpc MoveToWishlist(RemoveFromCartRequest)  returns (CartResponse);
+}
+
+
 // Message representing a user ID
 message UserId {
   string user_id = 1;

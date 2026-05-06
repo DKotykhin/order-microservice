@@ -10,6 +10,7 @@ import { CartModule } from './cart/cart.module';
 import { OrderModule } from './order/order.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthCheckModule } from './health-check/health-check.module';
+import { WishlistModule } from './wishlist/wishlist.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { HealthCheckModule } from './health-check/health-check.module';
     HealthCheckModule,
     CartModule,
     OrderModule,
+    WishlistModule,
   ],
   controllers: [],
   providers: [],
