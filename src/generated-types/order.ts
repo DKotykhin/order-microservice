@@ -131,11 +131,25 @@ export interface GetAllOrdersRequest {
 export interface UpdateOrderStatusRequest {
   id: string;
   status: OrderStatus;
+  changedBy: string;
 }
 
 export interface CancelOrderRequest {
   id: string;
   userId: string;
+}
+
+export interface OrderStatusHistoryEntry {
+  id: string;
+  orderId: string;
+  fromStatus: OrderStatus;
+  toStatus: OrderStatus;
+  changedBy: string;
+  changedAt: string;
+}
+
+export interface OrderStatusHistoryResponse {
+  entries: OrderStatusHistoryEntry[];
 }
 
 export const ORDER_V1_PACKAGE_NAME = "order.v1";
@@ -166,6 +180,10 @@ export interface OrderServiceClient {
   /** Cancel a pending order */
 
   cancelOrder(request: CancelOrderRequest): Observable<OrderResponse>;
+
+  /** Get the status change history for an order */
+
+  getOrderStatusHistory(request: OrderId): Observable<OrderStatusHistoryResponse>;
 }
 
 /** OrderService defines the gRPC service for managing orders. */
@@ -200,6 +218,12 @@ export interface OrderServiceController {
   /** Cancel a pending order */
 
   cancelOrder(request: CancelOrderRequest): Promise<OrderResponse> | Observable<OrderResponse> | OrderResponse;
+
+  /** Get the status change history for an order */
+
+  getOrderStatusHistory(
+    request: OrderId,
+  ): Promise<OrderStatusHistoryResponse> | Observable<OrderStatusHistoryResponse> | OrderStatusHistoryResponse;
 }
 
 export function OrderServiceControllerMethods() {
@@ -211,6 +235,7 @@ export function OrderServiceControllerMethods() {
       "getAllOrders",
       "updateOrderStatus",
       "cancelOrder",
+      "getOrderStatusHistory",
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);

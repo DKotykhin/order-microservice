@@ -14,22 +14,22 @@ service HealthCheckService {
 
 // HealthCheckResponse represents the health status response.
 message HealthCheckResponse {
-  bool serving = 1;
+  bool   serving = 1;
   string message = 2;
 }
 
 // DependencyHealth represents the health status of a single dependency.
 message DependencyHealth {
-  string name = 1;
-  bool healthy = 2;
-  string message = 3;
-  int32 latency_ms = 4;
+  string name       = 1;
+  bool   healthy    = 2;
+  string message    = 3;
+  int32  latency_ms = 4;
 }
 
 // ReadinessResponse represents the readiness status with per-dependency details.
 message ReadinessResponse {
-  bool serving = 1;
-  string message = 2;
+  bool                      serving      = 1;
+  string                    message      = 2;
   repeated DependencyHealth dependencies = 3;
 }
 

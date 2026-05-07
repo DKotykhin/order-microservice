@@ -30,6 +30,7 @@ Handles shopping cart, wishlist, and order persistence for the CoffeeDoor platfo
 - **Idempotent order creation** — optional `idempotency_key` on `CreateOrder` prevents duplicate orders on client retries; results cached in Redis for 24 hours
 - **Order search & filtering** — `GetOrdersByUser` supports filtering by status (multi-value), date range, price range, and currency, plus configurable sort by `createdAt`, `totalPrice`, or `status`
 - **Admin order listing** — `GetAllOrders` returns orders across all users with the same filter/sort/pagination interface; not scoped to a single user
+- **Order status audit log** — every status transition is recorded in `order_status_history` (`fromStatus`, `toStatus`, `changedBy`, `changedAt`); initial creation is recorded as `null → pending`; status updates and cancellations are written atomically with the order save inside a single database transaction; history is queryable via `GetOrderStatusHistory`
 
 ---
 
@@ -54,10 +55,11 @@ Client (gRPC)
     │
     └─▶ OrderController
             └── OrderService
-                    ├── StoreItemService (gRPC) — price re-validation at checkout
-                    ├── CartService             — cart cleared automatically after order is created
+                    ├── StoreItemService (gRPC)      — price re-validation at checkout
+                    ├── CartService                  — cart cleared automatically after order is created
+                    ├── OrderStatusHistoryService    — appends audit entries on every status change
                     └── OrderRepository
-                            └── PostgreSQL      — orders + order_item tables
+                            └── PostgreSQL           — orders + order_item + order_status_history tables
 ```
 
 ---
@@ -114,8 +116,9 @@ The caller (typically the API gateway) is responsible for fetching the cart and 
 | `GetOrder` | `OrderId` | `OrderResponse` | Returns order with all items |
 | `GetOrdersByUser` | `GetOrdersByUserRequest` | `OrderListResponse` | Paginated; supports filtering by status, date range, price range, currency; configurable sort |
 | `GetAllOrders` | `GetAllOrdersRequest` | `OrderListResponse` | Same as `GetOrdersByUser` but not scoped to a user; admin/internal only |
-| `UpdateOrderStatus` | `UpdateOrderStatusRequest` | `OrderResponse` | Admin / internal use |
-| `CancelOrder` | `CancelOrderRequest` | `OrderResponse` | Only `pending` orders; validates ownership |
+| `UpdateOrderStatus` | `UpdateOrderStatusRequest` | `OrderResponse` | Admin / internal use; records history entry atomically |
+| `CancelOrder` | `CancelOrderRequest` | `OrderResponse` | Only `pending` orders; validates ownership; records history entry atomically |
+| `GetOrderStatusHistory` | `OrderId` | `OrderStatusHistoryResponse` | Returns full audit log for an order, sorted by `changedAt` ascending |
 
 ### HealthCheckService (`proto/health-check.proto`)
 
@@ -163,6 +166,27 @@ The caller (typically the API gateway) is responsible for fetching the cart and 
 | `filters.currency` | `Currency` | Exact match; `UNSPECIFIED` is ignored |
 | `sort.field` | `createdAt` \| `totalPrice` \| `status` | Defaults to `createdAt` if absent or unrecognized |
 | `sort.order` | `SORT_ORDER_ASC` \| `SORT_ORDER_DESC` | Defaults to `DESC` |
+
+### OrderStatusHistory (PostgreSQL)
+
+Append-only audit log. One row per status transition. Rows are never updated or deleted (cascade-deleted only when the parent order is deleted).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | UUID | Primary key |
+| `orderId` | UUID FK | Cascade delete |
+| `fromStatus` | enum | Previous status; `null` for the initial `pending` entry on order creation |
+| `toStatus` | enum | Status transitioned to |
+| `changedBy` | varchar | `userId` of the acting user, or `system` for admin-triggered updates |
+| `changedAt` | timestamp | Set automatically by the database (`DEFAULT now()`) |
+| `notes` | text | Optional context (currently unused, reserved for future use) |
+
+#### Indexes
+
+| Index | Columns | Serves |
+|---|---|---|
+| Single-column | `orderId` | `GetOrderStatusHistory` — fetch all entries for an order |
+| Single-column | `changedAt` | Time-range queries across the history table |
 
 ### OrderItem (PostgreSQL)
 

@@ -48,6 +48,7 @@ export interface CartResponse {
   items: CartItem[];
   total: number;
   currency: Currency;
+  expiresAt?: string | undefined;
 }
 
 /** Request to add an item to the cart */

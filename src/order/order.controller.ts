@@ -10,6 +10,7 @@ import {
   type OrderServiceController,
   type UpdateOrderStatusRequest,
 } from '../generated-types/order';
+import { OrderStatusHistoryService } from '../order-status-history/order-status-history.service';
 import { OrderService } from './order.service';
 
 @Controller()
@@ -17,7 +18,10 @@ import { OrderService } from './order.service';
 export class OrderController implements OrderServiceController {
   private readonly logger = new Logger(OrderController.name);
 
-  constructor(private readonly orderService: OrderService) {}
+  constructor(
+    private readonly orderService: OrderService,
+    private readonly orderStatusHistoryService: OrderStatusHistoryService,
+  ) {}
 
   async createOrder(request: CreateOrderRequest) {
     this.logger.log(`CreateOrder for userId: ${request.userId}, items: ${request.items.length}`);
@@ -48,5 +52,10 @@ export class OrderController implements OrderServiceController {
   async cancelOrder(request: CancelOrderRequest) {
     this.logger.log(`CancelOrder id: ${request.id}, userId: ${request.userId}`);
     return this.orderService.cancelOrder(request);
+  }
+
+  async getOrderStatusHistory(request: OrderId) {
+    this.logger.log(`GetOrderStatusHistory id: ${request.id}`);
+    return this.orderStatusHistoryService.findByOrderId(request.id);
   }
 }

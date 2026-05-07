@@ -294,7 +294,8 @@ export class CartService implements OnModuleInit {
     const items = Object.values(data).map((v) => JSON.parse(v) as CartItem);
     const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const currency = items[0]?.currency ?? Currency.CURRENCY_UNSPECIFIED;
+    const expiresAt = new Date(Date.now() + CART_TTL_SECONDS * 1000).toISOString();
 
-    return { userId, items, total, currency };
+    return { userId, items, total, currency, expiresAt };
   }
 }

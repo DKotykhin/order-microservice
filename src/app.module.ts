@@ -11,6 +11,7 @@ import { OrderModule } from './order/order.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthCheckModule } from './health-check/health-check.module';
 import { WishlistModule } from './wishlist/wishlist.module';
+import { OrderStatusHistoryModule } from './order-status-history/order-status-history.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
     CartModule,
     OrderModule,
     WishlistModule,
+    OrderStatusHistoryModule,
   ],
   controllers: [],
   providers: [],

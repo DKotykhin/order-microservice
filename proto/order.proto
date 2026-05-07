@@ -16,38 +16,40 @@ service OrderService {
   rpc UpdateOrderStatus(UpdateOrderStatusRequest) returns (OrderResponse);
   // Cancel a pending order
   rpc CancelOrder(CancelOrderRequest) returns (OrderResponse);
+  // Get the status change history for an order
+  rpc GetOrderStatusHistory(OrderId) returns (OrderStatusHistoryResponse);
 }
 
 enum SortOrder {
   SORT_ORDER_UNSPECIFIED = 0;
-  SORT_ORDER_ASC = 1;
-  SORT_ORDER_DESC = 2;
+  SORT_ORDER_ASC         = 1;
+  SORT_ORDER_DESC        = 2;
 }
 
 enum OrderStatus {
   ORDER_STATUS_UNSPECIFIED = 0;
-  ORDER_STATUS_PENDING = 1;
-  ORDER_STATUS_CONFIRMED = 2;
-  ORDER_STATUS_PROCESSING = 3;
-  ORDER_STATUS_SHIPPED = 4;
-  ORDER_STATUS_DELIVERED = 5;
-  ORDER_STATUS_CANCELLED = 6;
-  ORDER_STATUS_REFUNDED = 7;
+  ORDER_STATUS_PENDING     = 1;
+  ORDER_STATUS_CONFIRMED   = 2;
+  ORDER_STATUS_PROCESSING  = 3;
+  ORDER_STATUS_SHIPPED     = 4;
+  ORDER_STATUS_DELIVERED   = 5;
+  ORDER_STATUS_CANCELLED   = 6;
+  ORDER_STATUS_REFUNDED    = 7;
 }
 
 enum Currency {
   CURRENCY_UNSPECIFIED = 0;
-  CURRENCY_USD = 1;
-  CURRENCY_EUR = 2;
-  CURRENCY_GBP = 3;
-  CURRENCY_UAH = 4;
+  CURRENCY_USD         = 1;
+  CURRENCY_EUR         = 2;
+  CURRENCY_GBP         = 3;
+  CURRENCY_UAH         = 4;
 }
 
 enum PriceType {
   PRICE_TYPE_UNSPECIFIED = 0;
-  PRICE_TYPE_REGULAR = 1;
-  PRICE_TYPE_DISCOUNT = 2;
-  PRICE_TYPE_WHOLESALE = 3;
+  PRICE_TYPE_REGULAR     = 1;
+  PRICE_TYPE_DISCOUNT    = 2;
+  PRICE_TYPE_WHOLESALE   = 3;
 }
 
 message OrderId {
@@ -55,61 +57,61 @@ message OrderId {
 }
 
 message OrderItemInput {
-  string product_id = 1;
-  optional string variant_id = 2;
-  string title = 3;
+  string          product_id   = 1;
+  optional string variant_id   = 2;
+  string          title        = 3;
   optional string variant_name = 4;
-  optional string image_url = 5;
-  int32 quantity = 6;
-  double unit_price = 7;
-  Currency currency = 8;
-  PriceType price_type = 9;
+  optional string image_url    = 5;
+  int32           quantity     = 6;
+  double          unit_price   = 7;
+  Currency        currency     = 8;
+  PriceType       price_type   = 9;
 }
 
 message OrderItemResponse {
-  string id = 1;
-  string product_id = 2;
-  optional string variant_id = 3;
-  string title = 4;
+  string          id           = 1;
+  string          product_id   = 2;
+  optional string variant_id   = 3;
+  string          title        = 4;
   optional string variant_name = 5;
-  optional string image_url = 6;
-  int32 quantity = 7;
-  double unit_price = 8;
-  Currency currency = 9;
-  PriceType price_type = 10;
+  optional string image_url    = 6;
+  int32           quantity     = 7;
+  double          unit_price   = 8;
+  Currency        currency     = 9;
+  PriceType       price_type   = 10;
 }
 
 message OrderResponse {
-  string id = 1;
-  string user_id = 2;
-  OrderStatus status = 3;
-  Currency currency = 4;
-  double total_price = 5;
-  optional string notes = 6;
-  repeated OrderItemResponse items = 7;
-  string created_at = 8;
-  string updated_at = 9;
+  string                     id          = 1;
+  string                     user_id     = 2;
+  OrderStatus                status      = 3;
+  Currency                   currency    = 4;
+  double                     total_price = 5;
+  optional string            notes       = 6;
+  repeated OrderItemResponse items       = 7;
+  string                     created_at  = 8;
+  string                     updated_at  = 9;
 }
 
 message OrderListResponse {
   repeated OrderResponse orders = 1;
-  int32 total = 2;
+  int32                  total  = 2;
 }
 
 message CreateOrderRequest {
-  string user_id = 1;
-  repeated OrderItemInput items = 2;
-  optional string notes = 3;
-  optional string idempotency_key = 4;
+  string                  user_id         = 1;
+  repeated OrderItemInput items           = 2;
+  optional string         notes           = 3;
+  optional string         idempotency_key = 4;
 }
 
 message OrderFilters {
-  repeated OrderStatus statuses = 1;
-  optional string date_from     = 2;
-  optional string date_to       = 3;
-  optional double min_price     = 4;
-  optional double max_price     = 5;
-  optional Currency currency    = 6;
+  repeated OrderStatus statuses  = 1;
+  optional string      date_from = 2;
+  optional string      date_to   = 3;
+  optional double      min_price = 4;
+  optional double      max_price = 5;
+  optional Currency    currency  = 6;
 }
 
 message OrderSort {
@@ -133,13 +135,27 @@ message GetAllOrdersRequest {
 }
 
 message UpdateOrderStatusRequest {
-  string id = 1;
-  OrderStatus status = 2;
+  string      id         = 1;
+  OrderStatus status     = 2;
+  string      changed_by = 3;
 }
 
 message CancelOrderRequest {
-  string id = 1;
+  string id      = 1;
   string user_id = 2;
+}
+
+message OrderStatusHistoryEntry {
+  string      id          = 1;
+  string      order_id    = 2;
+  OrderStatus from_status = 3;
+  OrderStatus to_status   = 4;
+  string      changed_by  = 5;
+  string      changed_at  = 6;
+}
+
+message OrderStatusHistoryResponse {
+  repeated OrderStatusHistoryEntry entries = 1;
 }
 
 // Command to generate TypeScript code with NestJS options:

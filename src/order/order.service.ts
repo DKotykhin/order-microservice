@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import type { ClientGrpc } from '@nestjs/microservices';
 import { firstValueFrom } from 'rxjs';
+import { DataSource } from 'typeorm';
 
 import { Currencies, OrderStatus as DbOrderStatus, PriceType as DbPriceType } from '../database/db.enums';
 import {
@@ -21,12 +22,34 @@ import {
 } from '../generated-types/store-item';
 import { CartService } from '../cart/cart.service';
 import { MessageBrokerService } from '../message-broker/message-broker.service';
+import { OrderStatusHistoryService } from '../order-status-history/order-status-history.service';
 import { RedisService } from '../redis/redis.service';
 import { AppError } from '../utils/errors/app-error';
 import { mapOrder, GRPC_CURRENCY_TO_DB, GRPC_PRICE_TYPE_TO_DB, GRPC_STATUS_TO_DB } from './order.mappers';
 import { OrderRepository } from './order.repository';
 
 const IDEMPOTENCY_TTL_SECONDS = 86400; // 24 hours
+
+const NOTIFIABLE_STATUSES = new Set([
+  DbOrderStatus.SHIPPED,
+  DbOrderStatus.DELIVERED,
+  DbOrderStatus.CANCELLED,
+  DbOrderStatus.REFUNDED,
+]);
+
+const STATUS_LABEL: Partial<Record<DbOrderStatus, string>> = {
+  [DbOrderStatus.SHIPPED]: 'Shipped',
+  [DbOrderStatus.DELIVERED]: 'Delivered',
+  [DbOrderStatus.CANCELLED]: 'Cancelled',
+  [DbOrderStatus.REFUNDED]: 'Refunded',
+};
+
+const STATUS_MESSAGE: Partial<Record<DbOrderStatus, string>> = {
+  [DbOrderStatus.SHIPPED]: "Your order is on its way! You'll receive it soon.",
+  [DbOrderStatus.DELIVERED]: 'Your order has been delivered. Enjoy your coffee!',
+  [DbOrderStatus.CANCELLED]: 'Your order has been cancelled. If you have any questions, please contact support.',
+  [DbOrderStatus.REFUNDED]: 'Your refund has been processed. It may take a few business days to appear.',
+};
 
 @Injectable()
 export class OrderService implements OnModuleInit {
@@ -38,6 +61,8 @@ export class OrderService implements OnModuleInit {
     private readonly redisService: RedisService,
     private readonly messageBrokerService: MessageBrokerService,
     private readonly cartService: CartService,
+    private readonly dataSource: DataSource,
+    private readonly orderStatusHistoryService: OrderStatusHistoryService,
     @Inject(STORE_ITEM_SERVICE_NAME) private readonly storeItemGrpcClient: ClientGrpc,
   ) {}
 
@@ -95,6 +120,13 @@ export class OrderService implements OnModuleInit {
           priceType: GRPC_PRICE_TYPE_TO_DB[input.priceType] ?? DbPriceType.REGULAR,
         })),
       );
+
+      await this.orderStatusHistoryService.append({
+        orderId: order.id,
+        fromStatus: null,
+        toStatus: DbOrderStatus.PENDING,
+        changedBy: request.userId,
+      });
 
       const response = mapOrder(order);
 
@@ -161,8 +193,18 @@ export class OrderService implements OnModuleInit {
       const newStatus = GRPC_STATUS_TO_DB[request.status];
       if (!newStatus) throw AppError.badRequest(`Invalid order status: ${request.status}`);
 
-      order.status = newStatus;
-      await this.orderRepository.save(order);
+      const fromStatus = order.status;
+      await this.dataSource.transaction(async (manager) => {
+        order.status = newStatus;
+        await manager.save(order);
+        await this.orderStatusHistoryService.append(
+          { orderId: order.id, fromStatus, toStatus: newStatus, changedBy: 'system' },
+          manager,
+        );
+      });
+      if (NOTIFIABLE_STATUSES.has(newStatus)) {
+        this.sendOrderStatusUpdateEmail(order.userId, order.id, newStatus);
+      }
       return mapOrder(order);
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -180,8 +222,20 @@ export class OrderService implements OnModuleInit {
         throw AppError.preconditionFailed('Only pending orders can be cancelled');
       }
 
-      order.status = DbOrderStatus.CANCELLED;
-      await this.orderRepository.save(order);
+      await this.dataSource.transaction(async (manager) => {
+        order.status = DbOrderStatus.CANCELLED;
+        await manager.save(order);
+        await this.orderStatusHistoryService.append(
+          {
+            orderId: order.id,
+            fromStatus: DbOrderStatus.PENDING,
+            toStatus: DbOrderStatus.CANCELLED,
+            changedBy: request.userId,
+          },
+          manager,
+        );
+      });
+      this.sendOrderStatusUpdateEmail(order.userId, order.id, DbOrderStatus.CANCELLED);
       return mapOrder(order);
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -224,6 +278,20 @@ export class OrderService implements OnModuleInit {
       throw AppError.preconditionFailed(`No price configured for item ${productId}`);
     }
     return parseFloat(priceObj.value);
+  }
+
+  private sendOrderStatusUpdateEmail(userId: string, orderId: string, newStatus: DbOrderStatus): void {
+    this.messageBrokerService.emitMessage('notification.email.send', {
+      userId,
+      subject: `Order #${orderId.slice(0, 8).toUpperCase()} — ${STATUS_LABEL[newStatus]}`,
+      template: 'order-status-update',
+      context: {
+        orderId,
+        statusLabel: STATUS_LABEL[newStatus],
+        statusMessage: STATUS_MESSAGE[newStatus],
+        changedAt: new Date().toISOString(),
+      },
+    });
   }
 
   private sendOrderConfirmationEmail(userId: string, order: OrderResponse): void {

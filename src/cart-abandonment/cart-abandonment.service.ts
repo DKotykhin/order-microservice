@@ -7,7 +7,7 @@ import type { CartAbandonmentJobData } from './cart-abandonment-job.interface';
 export const CART_ABANDONMENT_QUEUE = 'cart-abandonment';
 
 const REMINDER_DELAYS_MS = [
-  10 * 1000, // 10 seconds (for testing)
+  // 10 * 1000, // 10 seconds (for testing)
   1 * 60 * 60 * 1000, // 1 hour
   24 * 60 * 60 * 1000, // 24 hours (1 day)
   72 * 60 * 60 * 1000, // 72 hours (3 days)
