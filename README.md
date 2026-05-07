@@ -73,13 +73,19 @@ Cart (Redis)  ──checkout──▶  CreateOrder (gRPC)
                          Order (status: pending)
                          OrderItem[] (price snapshot)
                                   │
-                         UpdateOrderStatus (admin)
-                                  │
-                     ┌────────────┴────────────┐
-                  confirmed                cancelled
-                  processing               refunded
-                  shipped
-                  delivered
+                    ┌─────────────┴──────────────┐
+                    │                            │
+           UpdateOrderStatus (admin)      CancelOrder (user)
+                    │                       (pending only)
+         confirmed → processing                  │
+                    │                        cancelled
+               shipped
+                    │
+               delivered
+                    │
+             RefundOrder (user)
+                    │
+                refunded
 ```
 
 The caller (typically the API gateway) is responsible for fetching the cart and passing its items to `CreateOrder`. The service handles cart clearing and price validation internally — item prices are re-fetched from the store service at checkout and the server price is always used for the persisted order.
@@ -116,8 +122,9 @@ The caller (typically the API gateway) is responsible for fetching the cart and 
 | `GetOrder` | `OrderId` | `OrderResponse` | Returns order with all items |
 | `GetOrdersByUser` | `GetOrdersByUserRequest` | `OrderListResponse` | Paginated; supports filtering by status, date range, price range, currency; configurable sort |
 | `GetAllOrders` | `GetAllOrdersRequest` | `OrderListResponse` | Same as `GetOrdersByUser` but not scoped to a user; admin/internal only |
-| `UpdateOrderStatus` | `UpdateOrderStatusRequest` | `OrderResponse` | Admin / internal use; records history entry atomically |
+| `UpdateOrderStatus` | `UpdateOrderStatusRequest` | `OrderResponse` | Admin / internal use; accepts optional `notes` stored in status history; `changed_by` is attributed in the audit log |
 | `CancelOrder` | `CancelOrderRequest` | `OrderResponse` | Only `pending` orders; validates ownership; records history entry atomically |
+| `RefundOrder` | `RefundOrderRequest` | `OrderResponse` | Only `delivered` orders within 30 days of delivery; validates ownership; accepts optional `reason` stored in status history; triggers refund email |
 | `GetOrderStatusHistory` | `OrderId` | `OrderStatusHistoryResponse` | Returns full audit log for an order, sorted by `changedAt` ascending |
 
 ### HealthCheckService (`proto/health-check.proto`)
@@ -179,7 +186,7 @@ Append-only audit log. One row per status transition. Rows are never updated or 
 | `toStatus` | enum | Status transitioned to |
 | `changedBy` | varchar | `userId` of the acting user, or `system` for admin-triggered updates |
 | `changedAt` | timestamp | Set automatically by the database (`DEFAULT now()`) |
-| `notes` | text | Optional context (currently unused, reserved for future use) |
+| `notes` | text | Optional context; populated with the user-supplied `reason` on `RefundOrder` |
 
 #### Indexes
 

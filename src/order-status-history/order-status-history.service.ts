@@ -35,6 +35,14 @@ export class OrderStatusHistoryService {
     );
   }
 
+  async findDeliveredAt(orderId: string): Promise<Date | null> {
+    const entry = await this.historyRepository.findOne({
+      where: { orderId, toStatus: DbOrderStatus.DELIVERED },
+      order: { changedAt: 'DESC' },
+    });
+    return entry?.changedAt ?? null;
+  }
+
   async findByOrderId(orderId: string): Promise<OrderStatusHistoryResponse> {
     const entries = await this.historyRepository.find({
       where: { orderId },

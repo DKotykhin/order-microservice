@@ -4,14 +4,15 @@ import { firstValueFrom } from 'rxjs';
 import { DataSource } from 'typeorm';
 
 import { Currencies, OrderStatus as DbOrderStatus, PriceType as DbPriceType } from '../database/db.enums';
-import {
-  type CancelOrderRequest,
-  type CreateOrderRequest,
-  type GetAllOrdersRequest,
-  type GetOrdersByUserRequest,
-  type OrderListResponse,
-  type OrderResponse,
-  type UpdateOrderStatusRequest,
+import type {
+  RefundOrderRequest,
+  CancelOrderRequest,
+  CreateOrderRequest,
+  GetAllOrdersRequest,
+  GetOrdersByUserRequest,
+  OrderListResponse,
+  OrderResponse,
+  UpdateOrderStatusRequest,
 } from '../generated-types/order';
 import {
   Language,
@@ -29,6 +30,8 @@ import { mapOrder, GRPC_CURRENCY_TO_DB, GRPC_PRICE_TYPE_TO_DB, GRPC_STATUS_TO_DB
 import { OrderRepository } from './order.repository';
 
 const IDEMPOTENCY_TTL_SECONDS = 86400; // 24 hours
+const REFUND_WINDOW_DAYS = 30;
+const REFUND_WINDOW_MS = REFUND_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 
 const NOTIFIABLE_STATUSES = new Set([
   DbOrderStatus.SHIPPED,
@@ -198,7 +201,7 @@ export class OrderService implements OnModuleInit {
         order.status = newStatus;
         await manager.save(order);
         await this.orderStatusHistoryService.append(
-          { orderId: order.id, fromStatus, toStatus: newStatus, changedBy: 'system' },
+          { orderId: order.id, fromStatus, toStatus: newStatus, changedBy: request.changedBy, notes: request.notes },
           manager,
         );
       });
@@ -241,6 +244,44 @@ export class OrderService implements OnModuleInit {
       if (error instanceof AppError) throw error;
       this.logger.error(`Failed to cancel order ${request.id}`, error);
       throw AppError.internalServerError('Failed to cancel order');
+    }
+  }
+
+  async refundOrder(request: RefundOrderRequest): Promise<OrderResponse> {
+    try {
+      const order = await this.orderRepository.findById(request.id);
+      if (!order) throw AppError.notFound(`Order ${request.id} not found`);
+      if (order.userId !== request.userId) throw AppError.forbidden('You do not own this order');
+      if (order.status !== DbOrderStatus.DELIVERED) {
+        throw AppError.preconditionFailed('Only delivered orders can be refunded');
+      }
+
+      const deliveredAt: Date | null = await this.orderStatusHistoryService.findDeliveredAt(order.id);
+      if (!deliveredAt) throw AppError.internalServerError('Could not determine delivery date');
+      if (Date.now() - deliveredAt.getTime() > REFUND_WINDOW_MS) {
+        throw AppError.preconditionFailed(`Refund window of ${REFUND_WINDOW_DAYS} days has expired`);
+      }
+
+      await this.dataSource.transaction(async (manager) => {
+        order.status = DbOrderStatus.REFUNDED;
+        await manager.save(order);
+        await this.orderStatusHistoryService.append(
+          {
+            orderId: order.id,
+            fromStatus: DbOrderStatus.DELIVERED,
+            toStatus: DbOrderStatus.REFUNDED,
+            changedBy: request.userId,
+            notes: request.reason ?? undefined,
+          },
+          manager,
+        );
+      });
+      this.sendOrderStatusUpdateEmail(order.userId, order.id, DbOrderStatus.REFUNDED);
+      return mapOrder(order);
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      this.logger.error(`Failed to refund order ${request.id}`, error);
+      throw AppError.internalServerError('Failed to refund order');
     }
   }
 

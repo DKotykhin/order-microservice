@@ -18,6 +18,8 @@ service OrderService {
   rpc CancelOrder(CancelOrderRequest) returns (OrderResponse);
   // Get the status change history for an order
   rpc GetOrderStatusHistory(OrderId) returns (OrderStatusHistoryResponse);
+  // Refund an order (user)
+  rpc RefundOrder(RefundOrderRequest) returns (OrderResponse);
 }
 
 enum SortOrder {
@@ -138,6 +140,7 @@ message UpdateOrderStatusRequest {
   string      id         = 1;
   OrderStatus status     = 2;
   string      changed_by = 3;
+  optional string notes      = 4;   // reason for the transition; stored in history
 }
 
 message CancelOrderRequest {
@@ -156,6 +159,12 @@ message OrderStatusHistoryEntry {
 
 message OrderStatusHistoryResponse {
   repeated OrderStatusHistoryEntry entries = 1;
+}
+
+message RefundOrderRequest {
+  string          id      = 1;
+  string          user_id = 2;
+  optional string reason  = 3;   // stored in status history notes
 }
 
 // Command to generate TypeScript code with NestJS options:
