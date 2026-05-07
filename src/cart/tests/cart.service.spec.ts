@@ -1,11 +1,12 @@
 import { of, throwError } from 'rxjs';
 
-import { Currency, type CartItem, type CartItemInput } from 'src/generated-types/cart';
+import type { CartItem, CartItemInput } from 'src/generated-types/cart';
 import { PriceType, type StoreItemWithOption } from 'src/generated-types/store-item';
 import type { RedisService } from 'src/redis/redis.service';
 import { AppError } from 'src/utils/errors/app-error';
 
 import { CartService } from '../cart.service';
+import { Currency } from 'src/generated-types/order';
 
 const mockRedisService = {
   hgetall: jest.fn(),

@@ -1,17 +1,17 @@
-import {
-  Currency,
-  type AddToCartRequest,
-  type CartItem,
-  type CartItemInput,
-  type CartResponse,
-  type RemoveFromCartRequest,
-  type UpdateCartItemRequest,
-  type UserId,
+import type {
+  AddToCartRequest,
+  CartItem,
+  CartItemInput,
+  CartResponse,
+  RemoveFromCartRequest,
+  UpdateCartItemRequest,
+  UserId,
 } from 'src/generated-types/cart';
 import { AppError } from 'src/utils/errors/app-error';
 
 import { CartController } from '../cart.controller';
 import { CartService } from '../cart.service';
+import { Currency } from 'src/generated-types/order';
 
 const mockCartService = {
   getCart: jest.fn(),
