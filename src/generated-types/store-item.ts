@@ -6,8 +6,8 @@
 
 /* eslint-disable */
 import { GrpcMethod, GrpcStreamMethod } from "@nestjs/microservices";
+import { wrappers } from "protobufjs";
 import { Observable } from "rxjs";
-import { Timestamp } from "./google/protobuf/timestamp";
 
 export const protobufPackage = "store_item.v1";
 
@@ -69,19 +69,21 @@ export interface GetStoreItemByIdRequest {
 export interface CreateStoreItemRequest {
   categoryId: string;
   slug: string;
-  brand?: string | undefined;
-  isAvailable?: boolean | undefined;
-  expectedDate?: Timestamp | undefined;
+  brand?: string | null | undefined;
+  isAvailable?: boolean | null | undefined;
+  expectedDate?: Date | null | undefined;
+  quantity?: number | null | undefined;
 }
 
 /** declaration of UpdateStoreItemRequest message */
 export interface UpdateStoreItemRequest {
   itemId: string;
-  categoryId?: string | undefined;
-  slug?: string | undefined;
-  brand?: string | undefined;
-  isAvailable?: boolean | undefined;
-  expectedDate?: Timestamp | undefined;
+  categoryId?: string | null | undefined;
+  slug?: string | null | undefined;
+  brand?: string | null | undefined;
+  isAvailable?: boolean | null | undefined;
+  expectedDate?: Date | null | undefined;
+  quantity?: number | null | undefined;
 }
 
 /** declaration of StoreItemTranslationRequest message */
@@ -89,16 +91,16 @@ export interface StoreItemTranslationRequest {
   itemId: string;
   language: Language;
   title: string;
-  description?: string | undefined;
-  detailedDescription?: string | undefined;
+  description?: string | null | undefined;
+  detailedDescription?: string | null | undefined;
 }
 
 /** declaration of AddStoreItemImageRequest message */
 export interface AddStoreItemImageRequest {
   itemId: string;
   url: string;
-  alt?: string | undefined;
-  sortOrder?: number | undefined;
+  alt?: string | null | undefined;
+  sortOrder?: number | null | undefined;
 }
 
 /** declaration of ChangeStoreItemImagePositionRequest message */
@@ -120,6 +122,7 @@ export interface ChangeStoreItemPositionRequest {
 export interface AddStoreItemVariantRequest {
   itemId: string;
   attributeId: string;
+  quantity?: number | null | undefined;
 }
 
 /**
@@ -140,7 +143,7 @@ export interface AddVariantPriceRequest {
   itemAttributeId: string;
   priceType: PriceType;
   value: string;
-  currency?: Currency | undefined;
+  currency?: Currency | null | undefined;
 }
 
 /** declaration of AddStoreItemBasePriceRequest message */
@@ -148,7 +151,7 @@ export interface AddStoreItemBasePriceRequest {
   itemId: string;
   priceType: PriceType;
   value: string;
-  currency?: Currency | undefined;
+  currency?: Currency | null | undefined;
 }
 
 /** Message representing a status response */
@@ -165,19 +168,20 @@ export interface StoreItemListWithOption {
 /** Message representing a store item with flattened translations and variants */
 export interface StoreItemWithOption {
   id: string;
-  brand?: string | undefined;
+  brand?: string | null | undefined;
   slug: string;
   isAvailable: boolean;
   sortOrder: number;
-  expectedDate?: Timestamp | undefined;
+  expectedDate?: Date | null | undefined;
   categoryId: string;
   title: string;
-  description?: string | undefined;
-  detailedDescription?: string | undefined;
+  description?: string | null | undefined;
+  detailedDescription?: string | null | undefined;
   images: ItemImage[];
   variants: ItemVariant[];
   prices: ItemBasePrice[];
   attributes: ItemInfoAttribute[];
+  quantity?: number | null | undefined;
 }
 
 /** Message representing an informational attribute (no price impact) */
@@ -193,10 +197,11 @@ export interface ItemVariant {
   attributeSlug: string;
   attributeName: string;
   attributeValue: string;
-  regularPrice?: string | undefined;
-  discountPrice?: string | undefined;
-  wholesalePrice?: string | undefined;
-  currency?: Currency | undefined;
+  regularPrice?: string | null | undefined;
+  discountPrice?: string | null | undefined;
+  wholesalePrice?: string | null | undefined;
+  currency?: Currency | null | undefined;
+  quantity?: number | null | undefined;
 }
 
 /** Message representing a base price for items without variants */
@@ -204,18 +209,54 @@ export interface ItemBasePrice {
   id: string;
   priceType: PriceType;
   value: string;
-  currency?: Currency | undefined;
+  currency?: Currency | null | undefined;
 }
 
 /** Message representing an image for a store item */
 export interface ItemImage {
   id: string;
   url: string;
-  alt?: string | undefined;
+  alt?: string | null | undefined;
   sortOrder: number;
 }
 
+/** Message to request an atomic stock reservation for an item or variant */
+export interface AttemptReserveStockRequest {
+  itemId: string;
+  itemAttributeId?: string | null | undefined;
+  quantity: number;
+}
+
+/** Response indicating whether stock is tracked and whether the reservation succeeded */
+export interface AttemptReserveStockResponse {
+  stockTracked: boolean;
+  reserved: boolean;
+}
+
+/** Message to release a previously held stock reservation (e.g. cart cleared or TTL expired) */
+export interface ReleaseStockRequest {
+  itemId: string;
+  itemAttributeId?: string | null | undefined;
+  quantity: number;
+}
+
+/** Message to return stock after an order is cancelled or refunded */
+export interface ReturnStockRequest {
+  itemId: string;
+  itemAttributeId?: string | null | undefined;
+  quantity: number;
+}
+
 export const STORE_ITEM_V1_PACKAGE_NAME = "store_item.v1";
+
+wrappers[".google.protobuf.Timestamp"] = {
+  fromObject(value: Date) {
+    return { seconds: value.getTime() / 1000, nanos: (value.getTime() % 1000) * 1e6 };
+  },
+  toObject(message: { seconds: number; nanos: number }) {
+    return new Date(message.seconds * 1000 + message.nanos / 1e6);
+  },
+} as any;
 
 /** StoreItemService defines the gRPC service for managing store items. */
 
@@ -297,6 +338,18 @@ export interface StoreItemServiceClient {
   /** rpc to remove a base price from a store item */
 
   removeStoreItemBasePrice(request: Id): Observable<StatusResponse>;
+
+  /** rpc to atomically reserve stock for an item or variant; returns whether stock is tracked and whether reservation succeeded */
+
+  attemptReserveStock(request: AttemptReserveStockRequest): Observable<AttemptReserveStockResponse>;
+
+  /** rpc to release a previously held reservation (e.g. cart cleared, TTL expired) */
+
+  releaseStock(request: ReleaseStockRequest): Observable<StatusResponse>;
+
+  /** rpc to return stock after an order is cancelled or refunded */
+
+  returnStock(request: ReturnStockRequest): Observable<StatusResponse>;
 }
 
 /** StoreItemService defines the gRPC service for managing store items. */
@@ -385,6 +438,20 @@ export interface StoreItemServiceController {
   /** rpc to remove a base price from a store item */
 
   removeStoreItemBasePrice(request: Id): Promise<StatusResponse> | Observable<StatusResponse> | StatusResponse;
+
+  /** rpc to atomically reserve stock for an item or variant; returns whether stock is tracked and whether reservation succeeded */
+
+  attemptReserveStock(
+    request: AttemptReserveStockRequest,
+  ): Promise<AttemptReserveStockResponse> | Observable<AttemptReserveStockResponse> | AttemptReserveStockResponse;
+
+  /** rpc to release a previously held reservation (e.g. cart cleared, TTL expired) */
+
+  releaseStock(request: ReleaseStockRequest): Promise<StatusResponse> | Observable<StatusResponse> | StatusResponse;
+
+  /** rpc to return stock after an order is cancelled or refunded */
+
+  returnStock(request: ReturnStockRequest): Promise<StatusResponse> | Observable<StatusResponse> | StatusResponse;
 }
 
 export function StoreItemServiceControllerMethods() {
@@ -409,6 +476,9 @@ export function StoreItemServiceControllerMethods() {
       "removeVariantPrice",
       "addStoreItemBasePrice",
       "removeStoreItemBasePrice",
+      "attemptReserveStock",
+      "releaseStock",
+      "returnStock",
     ];
     for (const method of grpcMethods) {
       const descriptor: any = Reflect.getOwnPropertyDescriptor(constructor.prototype, method);

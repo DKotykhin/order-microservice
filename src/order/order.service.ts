@@ -21,6 +21,7 @@ import {
   type StoreItemServiceClient,
   type StoreItemWithOption,
 } from '../generated-types/store-item';
+import type { OrderItem } from '../order-item/entities/order-item.entity';
 import { CartService } from '../cart/cart.service';
 import { MessageBrokerService } from '../message-broker/message-broker.service';
 import { OrderStatusHistoryService } from '../order-status-history/order-status-history.service';
@@ -102,6 +103,34 @@ export class OrderService implements OnModuleInit {
 
       const totalPrice = validatedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
       const currency = GRPC_CURRENCY_TO_DB[validatedItems[0].currency] ?? Currencies.UAH;
+
+      const reservations: Array<{ productId: string; variantId?: string | null; quantity: number }> = [];
+      for (const item of validatedItems) {
+        const result = await firstValueFrom(
+          this.storeItemClient.attemptReserveStock({
+            itemId: item.productId,
+            itemAttributeId: item.variantId ?? null,
+            quantity: item.quantity,
+          }),
+        );
+
+        if (result.stockTracked && !result.reserved) {
+          await Promise.allSettled(
+            reservations.map((r) =>
+              firstValueFrom(
+                this.storeItemClient.returnStock({
+                  itemId: r.productId,
+                  itemAttributeId: r.variantId ?? null,
+                  quantity: r.quantity,
+                }),
+              ),
+            ),
+          );
+          throw AppError.preconditionFailed(`Insufficient stock for item ${item.productId}`);
+        }
+
+        if (result.stockTracked) reservations.push(item);
+      }
 
       const order = await this.orderRepository.createWithItems(
         {
@@ -238,6 +267,7 @@ export class OrderService implements OnModuleInit {
           manager,
         );
       });
+      this.returnStockForOrder(order.items);
       this.sendOrderStatusUpdateEmail(order.userId, order.id, DbOrderStatus.CANCELLED);
       return mapOrder(order);
     } catch (error) {
@@ -276,6 +306,7 @@ export class OrderService implements OnModuleInit {
           manager,
         );
       });
+      this.returnStockForOrder(order.items);
       this.sendOrderStatusUpdateEmail(order.userId, order.id, DbOrderStatus.REFUNDED);
       return mapOrder(order);
     } catch (error) {
@@ -333,6 +364,22 @@ export class OrderService implements OnModuleInit {
         changedAt: new Date().toISOString(),
       },
     });
+  }
+
+  private returnStockForOrder(items: OrderItem[]): void {
+    for (const item of items) {
+      firstValueFrom(
+        this.storeItemClient.returnStock({
+          itemId: item.productId,
+          itemAttributeId: item.variantId ?? null,
+          quantity: item.quantity,
+        }),
+      ).catch((err: unknown) =>
+        this.logger.error(
+          `Failed to return stock for item ${item.productId}: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
+    }
   }
 
   private sendOrderConfirmationEmail(userId: string, order: OrderResponse): void {

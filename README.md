@@ -27,6 +27,7 @@ Handles shopping cart, wishlist, and order persistence for the CoffeeDoor platfo
 - **Order lifecycle** — full status progression from `pending` through `delivered` or `cancelled`/`refunded`
 - **Price drift protection** — at checkout, every item's price is re-fetched from the store service and the server price is used for the final order; any discrepancy between the client-supplied price and the server price is logged as a warning
 - **Immutable item snapshots** — `title`, `variantName`, `imageUrl`, and `unitPrice` are copied at checkout time; store changes do not affect order history
+- **Stock reservation** — at checkout, stock is atomically reserved in the store service for each item before the order is committed; if any item has insufficient stock, already-reserved items are rolled back and a `preconditionFailed` error is returned. Items with `quantity = null` are treated as unlimited and skipped. On cancel or refund, stock is automatically returned (fire-and-forget)
 - **Idempotent order creation** — optional `idempotency_key` on `CreateOrder` prevents duplicate orders on client retries; results cached in Redis for 24 hours
 - **Order search & filtering** — `GetOrdersByUser` supports filtering by status (multi-value), date range, price range, and currency, plus configurable sort by `createdAt`, `totalPrice`, or `status`
 - **Admin order listing** — `GetAllOrders` returns orders across all users with the same filter/sort/pagination interface; not scoped to a single user
@@ -55,7 +56,8 @@ Client (gRPC)
     │
     └─▶ OrderController
             └── OrderService
-                    ├── StoreItemService (gRPC)      — price re-validation at checkout
+                    ├── StoreItemService (gRPC)      — price re-validation + stock reservation at checkout;
+                    │                                  stock returned on cancel / refund
                     ├── CartService                  — cart cleared automatically after order is created
                     ├── OrderStatusHistoryService    — appends audit entries on every status change
                     └── OrderRepository
@@ -70,6 +72,14 @@ Client (gRPC)
 Cart (Redis)  ──checkout──▶  CreateOrder (gRPC)
                                   │
                                   ▼
+                         Price re-validation (gRPC → store)
+                                  │
+                                  ▼
+                         Stock reservation (gRPC → store)
+                         ─ per item, atomic decrement
+                         ─ rolls back on first failure
+                                  │
+                                  ▼
                          Order (status: pending)
                          OrderItem[] (price snapshot)
                                   │
@@ -79,13 +89,15 @@ Cart (Redis)  ──checkout──▶  CreateOrder (gRPC)
                     │                       (pending only)
          confirmed → processing                  │
                     │                        cancelled
-               shipped
-                    │
+               shipped                           │
+                    │                    stock returned (async)
                delivered
                     │
              RefundOrder (user)
                     │
                 refunded
+                    │
+            stock returned (async)
 ```
 
 The caller (typically the API gateway) is responsible for fetching the cart and passing its items to `CreateOrder`. The service handles cart clearing and price validation internally — item prices are re-fetched from the store service at checkout and the server price is always used for the persisted order.
@@ -240,7 +252,7 @@ TTL is 30 days and resets on every write. Unavailable items are removed silently
 
 | Dependency | Transport | Purpose |
 |---|---|---|
-| `store-item-microservice` | gRPC | Validate item availability, fetch price and display fields |
+| `store-item-microservice` | gRPC | Validate item availability, fetch price and display fields; atomically reserve stock on order creation; return stock on cancel/refund |
 | `notification-microservice` | RabbitMQ (`notification.email.send`) | Send order confirmation and abandoned cart emails |
 
 ---
@@ -343,6 +355,12 @@ protoc -I ./proto ./proto/cart.proto \
 protoc -I ./proto ./proto/order.proto \
   --ts_proto_out=./src/generated-types \
   --ts_proto_opt=nestJs=true
+
+protoc -I ./proto ./proto/store-item.proto \
+  --ts_proto_out=./src/generated-types \
+  --ts_proto_opt=nestJs=true \
+  --ts_proto_opt=useNullAsOptional=true \
+  --ts_proto_opt=useDate=true
 ```
 
 ---

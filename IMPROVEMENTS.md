@@ -12,13 +12,7 @@
 - [x] Order search and filtering
 - [x] Order status history / audit log
 - [x] Refund/Return flow
-
----
-
-## High Priority
-
-- [ ] **Inventory reservation**
-  Cart addition checks availability but nothing reserves stock. Two users can add the last item and both succeed at checkout. Implement reserve-on-add-to-cart with release on cart clear/TTL expiry, or at minimum reserve-on-checkout.
+- [x] Inventory reservation
 
 ---
 
