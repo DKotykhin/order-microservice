@@ -34,5 +34,6 @@ async function bootstrap() {
   await app.startAllMicroservices();
   await app.listen(PORT);
   logger.log('Order microservice is running on ' + url);
+  logger.log('HTTP server is running on port ' + PORT);
 }
 void bootstrap();
