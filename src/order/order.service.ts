@@ -28,11 +28,13 @@ import { OrderStatusHistoryService } from '../order-status-history/order-status-
 import { RedisService } from '../redis/redis.service';
 import { AppError } from '../utils/errors/app-error';
 import { mapOrder, GRPC_CURRENCY_TO_DB, GRPC_PRICE_TYPE_TO_DB, GRPC_STATUS_TO_DB } from './order.mappers';
+import { Order } from './entities/order.entity';
 import { OrderRepository } from './order.repository';
 
 const IDEMPOTENCY_TTL_SECONDS = 86400; // 24 hours
 const REFUND_WINDOW_DAYS = 30;
 const REFUND_WINDOW_MS = REFUND_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+const SAGA_ACTOR = 'payment-saga';
 
 const NOTIFIABLE_STATUSES = new Set([
   DbOrderStatus.SHIPPED,
@@ -55,6 +57,8 @@ const STATUS_MESSAGE: Partial<Record<DbOrderStatus, string>> = {
   [DbOrderStatus.REFUNDED]: 'Your refund has been processed. It may take a few business days to appear.',
 };
 
+type ReservableItem = { productId: string; variantId?: string | null; quantity: number };
+
 @Injectable()
 export class OrderService implements OnModuleInit {
   private readonly logger = new Logger(OrderService.name);
@@ -73,6 +77,8 @@ export class OrderService implements OnModuleInit {
   onModuleInit() {
     this.storeItemClient = this.storeItemGrpcClient.getService<StoreItemServiceClient>(STORE_ITEM_SERVICE_NAME);
   }
+
+  // ── Public API ────────────────────────────────────────────────────────────
 
   async createOrder(request: CreateOrderRequest): Promise<OrderResponse> {
     try {
@@ -104,33 +110,7 @@ export class OrderService implements OnModuleInit {
       const totalPrice = validatedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
       const currency = GRPC_CURRENCY_TO_DB[validatedItems[0].currency] ?? Currencies.UAH;
 
-      const reservations: Array<{ productId: string; variantId?: string | null; quantity: number }> = [];
-      for (const item of validatedItems) {
-        const result = await firstValueFrom(
-          this.storeItemClient.attemptReserveStock({
-            itemId: item.productId,
-            itemAttributeId: item.variantId ?? null,
-            quantity: item.quantity,
-          }),
-        );
-
-        if (result.stockTracked && !result.reserved) {
-          await Promise.allSettled(
-            reservations.map((r) =>
-              firstValueFrom(
-                this.storeItemClient.returnStock({
-                  itemId: r.productId,
-                  itemAttributeId: r.variantId ?? null,
-                  quantity: r.quantity,
-                }),
-              ),
-            ),
-          );
-          throw AppError.preconditionFailed(`Insufficient stock for item ${item.productId}`);
-        }
-
-        if (result.stockTracked) reservations.push(item);
-      }
+      await this.reserveStock(validatedItems);
 
       const order = await this.orderRepository.createWithItems(
         {
@@ -253,22 +233,7 @@ export class OrderService implements OnModuleInit {
       if (order.status !== DbOrderStatus.PENDING) {
         throw AppError.preconditionFailed('Only pending orders can be cancelled');
       }
-
-      await this.dataSource.transaction(async (manager) => {
-        order.status = DbOrderStatus.CANCELLED;
-        await manager.save(order);
-        await this.orderStatusHistoryService.append(
-          {
-            orderId: order.id,
-            fromStatus: DbOrderStatus.PENDING,
-            toStatus: DbOrderStatus.CANCELLED,
-            changedBy: request.userId,
-          },
-          manager,
-        );
-      });
-      this.returnStockForOrder(order.items);
-      this.sendOrderStatusUpdateEmail(order.userId, order.id, DbOrderStatus.CANCELLED);
+      await this.performCancellation(order, request.userId);
       return mapOrder(order);
     } catch (error) {
       if (error instanceof AppError) throw error;
@@ -313,6 +278,108 @@ export class OrderService implements OnModuleInit {
       if (error instanceof AppError) throw error;
       this.logger.error(`Failed to refund order ${request.id}`, error);
       throw AppError.internalServerError('Failed to refund order');
+    }
+  }
+
+  // ── Saga ──────────────────────────────────────────────────────────────────
+
+  async confirmOrder(orderId: string): Promise<void> {
+    try {
+      const order = await this.orderRepository.findById(orderId);
+      if (!order) {
+        this.logger.warn(`confirmOrder: order ${orderId} not found`);
+        return;
+      }
+      if (order.status !== DbOrderStatus.PENDING) {
+        this.logger.warn(`confirmOrder: order ${orderId} is not PENDING (status=${order.status}), skipping`);
+        return;
+      }
+
+      await this.dataSource.transaction(async (manager) => {
+        order.status = DbOrderStatus.CONFIRMED;
+        await manager.save(order);
+        await this.orderStatusHistoryService.append(
+          {
+            orderId: order.id,
+            fromStatus: DbOrderStatus.PENDING,
+            toStatus: DbOrderStatus.CONFIRMED,
+            changedBy: SAGA_ACTOR,
+          },
+          manager,
+        );
+      });
+    } catch (error) {
+      this.logger.error(`Failed to confirm order ${orderId}`, error);
+      throw error;
+    }
+  }
+
+  async cancelOrderBySaga(orderId: string, reason?: string): Promise<void> {
+    try {
+      const order = await this.orderRepository.findById(orderId);
+      if (!order) {
+        this.logger.warn(`cancelOrderBySaga: order ${orderId} not found`);
+        return;
+      }
+      if (order.status !== DbOrderStatus.PENDING) {
+        this.logger.warn(`cancelOrderBySaga: order ${orderId} is not PENDING (status=${order.status}), skipping`);
+        return;
+      }
+      await this.performCancellation(order, SAGA_ACTOR, reason);
+    } catch (error) {
+      this.logger.error(`Failed to cancel order ${orderId} via saga`, error);
+      throw error;
+    }
+  }
+
+  // ── Private ───────────────────────────────────────────────────────────────
+
+  private async performCancellation(order: Order, changedBy: string, reason?: string): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      order.status = DbOrderStatus.CANCELLED;
+      await manager.save(order);
+      await this.orderStatusHistoryService.append(
+        {
+          orderId: order.id,
+          fromStatus: DbOrderStatus.PENDING,
+          toStatus: DbOrderStatus.CANCELLED,
+          changedBy,
+          notes: reason,
+        },
+        manager,
+      );
+    });
+    this.returnStockForOrder(order.items);
+    this.sendOrderStatusUpdateEmail(order.userId, order.id, DbOrderStatus.CANCELLED);
+  }
+
+  private async reserveStock(items: ReservableItem[]): Promise<void> {
+    const reservations: ReservableItem[] = [];
+    for (const item of items) {
+      const result = await firstValueFrom(
+        this.storeItemClient.attemptReserveStock({
+          itemId: item.productId,
+          itemAttributeId: item.variantId ?? null,
+          quantity: item.quantity,
+        }),
+      );
+
+      if (result.stockTracked && !result.reserved) {
+        await Promise.allSettled(
+          reservations.map((r) =>
+            firstValueFrom(
+              this.storeItemClient.returnStock({
+                itemId: r.productId,
+                itemAttributeId: r.variantId ?? null,
+                quantity: r.quantity,
+              }),
+            ),
+          ),
+        );
+        throw AppError.preconditionFailed(`Insufficient stock for item ${item.productId}`);
+      }
+
+      if (result.stockTracked) reservations.push(item);
     }
   }
 

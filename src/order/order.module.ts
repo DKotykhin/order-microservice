@@ -6,13 +6,14 @@ import { OrderStatusHistoryModule } from '../order-status-history/order-status-h
 import { OrderItem } from '../order-item/entities/order-item.entity';
 import { StoreItemClientModule } from '../store-item-client/store-item-client.module';
 import { OrderController } from './order.controller';
+import { OrderSagaController } from './order-saga.controller';
 import { OrderRepository } from './order.repository';
 import { OrderService } from './order.service';
 import { Order } from './entities/order.entity';
 
 @Module({
   imports: [StoreItemClientModule, TypeOrmModule.forFeature([Order, OrderItem]), CartModule, OrderStatusHistoryModule],
-  controllers: [OrderController],
+  controllers: [OrderController, OrderSagaController],
   providers: [OrderRepository, OrderService],
 })
 export class OrderModule {}

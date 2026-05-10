@@ -8,7 +8,7 @@ export class MessageBrokerService {
   protected readonly logger = new Logger(MessageBrokerService.name);
 
   constructor(
-    @Inject('NOTIFICATION_MICROSERVICE')
+    @Inject('NOTIFICATION_RMQ_CLIENT')
     private readonly notificationMicroserviceClient: ClientProxy,
   ) {}
 

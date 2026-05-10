@@ -31,6 +31,16 @@ async function bootstrap() {
     },
   });
 
+  app.connectMicroservice<MicroserviceOptions>({
+    transport: Transport.RMQ,
+    options: {
+      urls: [configService.getOrThrow<string>('RABBITMQ_URL')],
+      queue: configService.getOrThrow<string>('ORDER_EVENTS_RABBITMQ_QUEUE'),
+      queueOptions: { durable: true },
+      noAck: false,
+    },
+  });
+
   await app.startAllMicroservices();
   await app.listen(PORT);
   logger.log('Order microservice is running on ' + url);

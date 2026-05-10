@@ -25,6 +25,7 @@ Handles shopping cart, wishlist, and order persistence for the CoffeeDoor platfo
 - **Wishlist / Save for Later** — users can save items to a persistent wishlist (30-day TTL); supports move-to-cart (re-validates price/availability) and move-to-wishlist (saves cart item including quantity); prices and availability are synced on every `GetWishlist` call; adding a duplicate item is idempotent
 - **Order persistence** — converts a cart snapshot into a durable `Order` + `OrderItem` records in PostgreSQL
 - **Order lifecycle** — full status progression from `pending` through `delivered` or `cancelled`/`refunded`
+- **Payment saga (choreography)** — consumes `payment.succeeded` / `payment.failed` events from RabbitMQ; automatically confirms or cancels a `pending` order when payment resolves, and returns reserved stock on failure
 - **Price drift protection** — at checkout, every item's price is re-fetched from the store service and the server price is used for the final order; any discrepancy between the client-supplied price and the server price is logged as a warning
 - **Immutable item snapshots** — `title`, `variantName`, `imageUrl`, and `unitPrice` are copied at checkout time; store changes do not affect order history
 - **Stock reservation** — at checkout, stock is atomically reserved in the store service for each item before the order is committed; if any item has insufficient stock, already-reserved items are rolled back and a `preconditionFailed` error is returned. Items with `quantity = null` are treated as unlimited and skipped. On cancel or refund, stock is automatically returned (fire-and-forget)
@@ -54,14 +55,20 @@ Client (gRPC)
     │               ├── StoreItemService (gRPC) — price/availability/display sync
     │               └── CartService             — used for move-to-cart
     │
-    └─▶ OrderController
+    ├─▶ OrderController
+    │       └── OrderService
+    │               ├── StoreItemService (gRPC)      — price re-validation + stock reservation at checkout;
+    │               │                                  stock returned on cancel / refund
+    │               ├── CartService                  — cart cleared automatically after order is created
+    │               ├── OrderStatusHistoryService    — appends audit entries on every status change
+    │               └── OrderRepository
+    │                       └── PostgreSQL           — orders + order_item + order_status_history tables
+    │
+    └─▶ OrderSagaController (RabbitMQ consumer)
             └── OrderService
-                    ├── StoreItemService (gRPC)      — price re-validation + stock reservation at checkout;
-                    │                                  stock returned on cancel / refund
-                    ├── CartService                  — cart cleared automatically after order is created
-                    ├── OrderStatusHistoryService    — appends audit entries on every status change
-                    └── OrderRepository
-                            └── PostgreSQL           — orders + order_item + order_status_history tables
+                    ├── confirmOrder()      — PENDING → CONFIRMED on 'payment.succeeded'
+                    └── cancelOrderBySaga() — PENDING → CANCELLED on 'payment.failed'
+                                              stock returned, cancellation email sent
 ```
 
 ---
@@ -69,7 +76,7 @@ Client (gRPC)
 ## Order Flow
 
 ```
-Cart (Redis)  ──checkout──▶  CreateOrder (gRPC)
+Cart (Redis) ── checkout ──▶ CreateOrder (gRPC)
                                   │
                                   ▼
                          Price re-validation (gRPC → store)
@@ -83,21 +90,26 @@ Cart (Redis)  ──checkout──▶  CreateOrder (gRPC)
                          Order (status: pending)
                          OrderItem[] (price snapshot)
                                   │
-                    ┌─────────────┴──────────────┐
-                    │                            │
-           UpdateOrderStatus (admin)      CancelOrder (user)
-                    │                       (pending only)
-         confirmed → processing                  │
-                    │                        cancelled
-               shipped                           │
-                    │                    stock returned (async)
-               delivered
-                    │
-             RefundOrder (user)
-                    │
-                refunded
-                    │
-            stock returned (async)
+          ┌───────────────────────┼───────────────────────┐
+          │                       │                       │
+  payment.succeeded        payment.failed          CancelOrder (user)
+  (RabbitMQ saga)          (RabbitMQ saga)          (pending only)
+          │                       │                       │
+      confirmed               cancelled               cancelled
+          │                       │                       │
+  UpdateOrderStatus         stock returned          stock returned
+  (admin/internal)             (async)                 (async)
+  confirmed → processing
+          │
+       shipped
+          │
+      delivered
+          │
+   RefundOrder (user)
+          │
+       refunded
+          │
+   stock returned (async)
 ```
 
 The caller (typically the API gateway) is responsible for fetching the cart and passing its items to `CreateOrder`. The service handles cart clearing and price validation internally — item prices are re-fetched from the store service at checkout and the server price is always used for the persisted order.
@@ -196,7 +208,7 @@ Append-only audit log. One row per status transition. Rows are never updated or 
 | `orderId` | UUID FK | Cascade delete |
 | `fromStatus` | enum | Previous status; `null` for the initial `pending` entry on order creation |
 | `toStatus` | enum | Status transitioned to |
-| `changedBy` | varchar | `userId` of the acting user, or `system` for admin-triggered updates |
+| `changedBy` | varchar | `userId` of the acting user, or `payment-saga` for saga-driven transitions |
 | `changedAt` | timestamp | Set automatically by the database (`DEFAULT now()`) |
 | `notes` | text | Optional context; populated with the user-supplied `reason` on `RefundOrder` |
 
@@ -250,10 +262,11 @@ TTL is 30 days and resets on every write. Unavailable items are removed silently
 
 ## Inter-service Communication
 
-| Dependency | Transport | Purpose |
-|---|---|---|
-| `store-item-microservice` | gRPC | Validate item availability, fetch price and display fields; atomically reserve stock on order creation; return stock on cancel/refund |
-| `notification-microservice` | RabbitMQ (`notification.email.send`) | Send order confirmation and abandoned cart emails |
+| Dependency | Transport | Direction | Purpose |
+|---|---|---|---|
+| `store-item-microservice` | gRPC | outbound | Validate item availability, fetch price and display fields; atomically reserve stock on order creation; return stock on cancel/refund |
+| `notification-microservice` | RabbitMQ (`notification_queue`) | outbound | Send order confirmation, status update, and abandoned cart emails |
+| `payment-microservice` | RabbitMQ (`order_events_queue`) | inbound | Receive `payment.succeeded` / `payment.failed` saga events to confirm or cancel orders |
 
 ---
 
@@ -269,7 +282,8 @@ TTL is 30 days and resets on every write. Unavailable items are removed silently
 | `REDIS_PORT` | Redis port |
 | `REDIS_DB` | Redis database index (0–15) |
 | `RABBITMQ_URL` | RabbitMQ AMQP connection URL |
-| `RABBITMQ_QUEUE` | RabbitMQ queue name for outgoing notifications |
+| `NOTIFICATION_RABBITMQ_QUEUE` | Queue name for outgoing notification events |
+| `ORDER_EVENTS_RABBITMQ_QUEUE` | Queue name to consume inbound saga events from payment-microservice |
 | `STORE_SERVICE_URL` | gRPC address of the store-item microservice |
 
 Copy `.env.example` to `.env.local` and fill in values before running locally.

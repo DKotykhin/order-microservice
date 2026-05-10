@@ -6,6 +6,7 @@ import { validateEnv } from './utils/validators/env-validator';
 import { EnvironmentVariables } from './utils/env.dto';
 import { RedisModule } from './redis/redis.module';
 import { MessageBrokerModule } from './message-broker/message-broker.module';
+import { RmqConsumerModule } from './rmq-consumer/rmq-consumer.module';
 import { CartModule } from './cart/cart.module';
 import { OrderModule } from './order/order.module';
 import { DatabaseModule } from './database/database.module';
@@ -33,6 +34,7 @@ import { OrderStatusHistoryModule } from './order-status-history/order-status-hi
     DatabaseModule,
     RedisModule,
     MessageBrokerModule,
+    RmqConsumerModule,
     HealthCheckModule,
     CartModule,
     OrderModule,

@@ -9,12 +9,12 @@ import { MessageBrokerService } from './message-broker.service';
   imports: [
     ClientsModule.registerAsync([
       {
-        name: 'NOTIFICATION_MICROSERVICE',
+        name: 'NOTIFICATION_RMQ_CLIENT',
         useFactory: (configService: ConfigService) => ({
           transport: Transport.RMQ,
           options: {
             urls: [configService.getOrThrow<string>('RABBITMQ_URL')],
-            queue: configService.getOrThrow<string>('RABBITMQ_QUEUE'),
+            queue: configService.getOrThrow<string>('NOTIFICATION_RABBITMQ_QUEUE'),
             queueOptions: {
               durable: true,
             },

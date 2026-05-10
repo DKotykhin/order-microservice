@@ -41,7 +41,11 @@ export class EnvironmentVariables {
 
   @IsString()
   @IsNotEmpty()
-  readonly RABBITMQ_QUEUE: string;
+  readonly NOTIFICATION_RABBITMQ_QUEUE: string;
+
+  @IsString()
+  @IsNotEmpty()
+  readonly ORDER_EVENTS_RABBITMQ_QUEUE: string;
 
   @IsString()
   @IsNotEmpty()
